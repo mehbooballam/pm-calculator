@@ -222,7 +222,6 @@ with tab_evm:
                 y=[bac, pv_v, ev_v, ac_v],
                 marker_color=[COLORS["accent"], COLORS["purple"], COLORS["green"],
                               COLORS["red"] if ac_v > ev_v else COLORS["yellow"]],
-                marker_cornerradius=6,
                 text=[dollar(v) for v in [bac, pv_v, ev_v, ac_v]],
                 textposition="outside", textfont=dict(color="#f1f5f9", size=11),
             ))
@@ -254,8 +253,7 @@ with tab_evm:
                 COLORS["cyan"],
             ]
             fig = go.Figure(go.Bar(y=idx_labels, x=idx_vals, orientation="h",
-                                   marker_color=idx_colors, marker_cornerradius=6,
-                                   text=[f"{v:.4f}" for v in idx_vals], textposition="outside",
+                                   marker_color=idx_colors,                                   text=[f"{v:.4f}" for v in idx_vals], textposition="outside",
                                    textfont=dict(color="#f1f5f9", size=11)))
             fig.add_vline(x=1, line_dash="dash", line_color="#f1f5f9", line_width=1,
                           annotation_text="Target: 1.0", annotation_font_color="#94a3b8")
@@ -277,8 +275,7 @@ with tab_evm:
             eac_labels = ["BAC\n(Original)", "EAC\n(CPI)", "EAC\n(Atypical)", "EAC\n(CPI×SPI)"]
             eac_vals = [bac, d["eac_cpi"] or 0, d["eac_ac"], d["eac_comb"] or 0]
             eac_colors = [COLORS["accent"]] + [COLORS["red"] if v > bac else COLORS["green"] for v in eac_vals[1:]]
-            fig = go.Figure(go.Bar(x=eac_labels, y=eac_vals, marker_color=eac_colors, marker_cornerradius=6,
-                                   text=[dollar(v) for v in eac_vals], textposition="outside",
+            fig = go.Figure(go.Bar(x=eac_labels, y=eac_vals, marker_color=eac_colors,                                   text=[dollar(v) for v in eac_vals], textposition="outside",
                                    textfont=dict(color="#f1f5f9", size=11)))
             fig.add_hline(y=bac, line_dash="dash", line_color=COLORS["accent"], line_width=1,
                           annotation_text="BAC", annotation_font_color="#94a3b8")
@@ -290,8 +287,7 @@ with tab_evm:
             var_vals = [d["cv"], d["sv"], d["vac"] or 0]
             var_colors = [COLORS["green"] if v >= 0 else COLORS["red"] for v in var_vals]
             fig = go.Figure(go.Bar(y=var_labels, x=var_vals, orientation="h", marker_color=var_colors,
-                                   marker_cornerradius=6,
-                                   text=[dollar(v) for v in var_vals], textposition="outside",
+                                                      text=[dollar(v) for v in var_vals], textposition="outside",
                                    textfont=dict(color="#f1f5f9", size=11)))
             fig.add_vline(x=0, line_dash="dash", line_color="#f1f5f9", line_width=1)
             fig.update_layout(**pl(title="Variance Analysis (CV, SV, VAC)", xaxis=dict(title="Amount ($)")))
@@ -339,7 +335,6 @@ with tab_evm:
                 marker_color=[COLORS["purple"],
                               COLORS["green"] if rem_budget >= rem_work else COLORS["red"],
                               COLORS["cyan"]],
-                marker_cornerradius=6,
                 text=[dollar(v) for v in [rem_work, rem_budget, d["etc"] or 0]],
                 textposition="outside", textfont=dict(color="#f1f5f9", size=11),
             ))
@@ -356,7 +351,7 @@ with tab_evm:
                          COLORS["green"] if d["sv"] >= 0 else COLORS["red"],
                          COLORS["cyan"], COLORS["orange"],
                          COLORS["green"] if (d["vac"] or 0) >= 0 else COLORS["red"]]
-            fig = go.Figure(go.Bar(x=wf_labels, y=wf_vals, marker_color=wf_colors, marker_cornerradius=4,
+            fig = go.Figure(go.Bar(x=wf_labels, y=wf_vals, marker_color=wf_colors,
                                    text=[dollar(v) for v in wf_vals], textposition="outside",
                                    textfont=dict(color="#f1f5f9", size=9)))
             fig.update_layout(**pl(title="All Values Waterfall"))
@@ -391,7 +386,6 @@ with tab_evm:
                 marker_color=[COLORS["accent"],
                               COLORS["red"] if (d["tcpi_bac"] or 0) > (d["cpi"] or 0) else COLORS["green"],
                               COLORS["cyan"]],
-                marker_cornerradius=6,
                 text=[f"{v:.4f}" for v in tcpi_vals], textposition="outside",
                 textfont=dict(color="#f1f5f9", size=11),
             ))
@@ -551,7 +545,7 @@ with tab_scurve:
         with c1:
             fig = go.Figure(go.Bar(x=labels, y=cv_arr, name="CV",
                                    marker_color=[COLORS["green"] if v >= 0 else COLORS["red"] for v in cv_arr],
-                                   marker_cornerradius=4))
+                                  ))
             fig.add_hline(y=0, line_dash="dash", line_color="#f1f5f9", line_width=1)
             fig.update_layout(**pl(title="Cost Variance (CV) Trend", yaxis=dict(title="CV ($)"), xaxis=dict(title=sc_label)))
             st.plotly_chart(fig, use_container_width=True)
@@ -559,7 +553,7 @@ with tab_scurve:
         with c2:
             fig = go.Figure(go.Bar(x=labels, y=sv_arr, name="SV",
                                    marker_color=[COLORS["green"] if v >= 0 else COLORS["red"] for v in sv_arr],
-                                   marker_cornerradius=4))
+                                  ))
             fig.add_hline(y=0, line_dash="dash", line_color="#f1f5f9", line_width=1)
             fig.update_layout(**pl(title="Schedule Variance (SV) Trend", yaxis=dict(title="SV ($)"), xaxis=dict(title=sc_label)))
             st.plotly_chart(fig, use_container_width=True)
@@ -715,12 +709,17 @@ with tab_cp:
         fig.add_trace(go.Bar(y=[None], x=[0], marker_color=COLORS["red"], name="Critical", showlegend=True))
         fig.add_trace(go.Bar(y=[None], x=[0], marker_color=COLORS["accent"], name="Non-Critical", showlegend=True))
         fig.add_trace(go.Bar(y=[None], x=[0], marker_color="rgba(234,179,8,0.35)", name="Float", showlegend=True))
-        fig.update_layout(**pl(
-            title="", height=max(300, len(tasks) * 40 + 80), barmode="stack",
-            xaxis=dict(title="Time (units)", gridcolor="#1e293b"),
-            yaxis=dict(gridcolor="transparent"),
-            legend=dict(orientation="h", y=1.05, x=0.5, xanchor="center"),
-        ))
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="#0f172a",
+            font=dict(color="#94a3b8", family="Segoe UI, system-ui, sans-serif"),
+            margin=dict(l=50, r=30, t=40, b=50),
+            height=max(300, len(tasks) * 40 + 80),
+            barmode="overlay",
+            xaxis=dict(title="Time (units)", gridcolor="#1e293b", zerolinecolor="#334155"),
+            yaxis=dict(gridcolor="transparent", zerolinecolor="#334155"),
+            legend=dict(orientation="h", y=1.05, x=0.5, xanchor="center", bgcolor="rgba(0,0,0,0)", font=dict(size=11)),
+        )
         st.plotly_chart(fig, use_container_width=True)
 
         # ── Analysis Charts ──
@@ -733,7 +732,6 @@ with tab_cp:
             fig = go.Figure(go.Bar(
                 x=labels, y=[t["duration"] for t in tasks],
                 marker_color=[COLORS["red"] if t["critical"] else COLORS["accent"] for t in tasks],
-                marker_cornerradius=4,
             ))
             fig.update_layout(**pl(title="Task Duration Comparison", yaxis=dict(title="Duration"), xaxis=dict(tickangle=30)))
             st.plotly_chart(fig, use_container_width=True)
@@ -742,7 +740,6 @@ with tab_cp:
             fig = go.Figure(go.Bar(
                 x=labels, y=[t["total_float"] for t in tasks],
                 marker_color=[COLORS["red"] if t["critical"] else COLORS["yellow"] for t in tasks],
-                marker_cornerradius=4,
             ))
             fig.update_layout(**pl(title="Total Float by Task", yaxis=dict(title="Float"), xaxis=dict(tickangle=30)))
             st.plotly_chart(fig, use_container_width=True)
@@ -778,7 +775,7 @@ with tab_cp:
         c1, c2 = st.columns(2)
         with c1:
             durs = [t["duration"] for t in tasks]
-            fig = go.Figure(go.Histogram(x=durs, nbinsx=5, marker_color=COLORS["purple"], marker_cornerradius=4))
+            fig = go.Figure(go.Histogram(x=durs, nbinsx=5, marker_color=COLORS["purple"],))
             fig.update_layout(**pl(title="Duration Distribution", xaxis=dict(title="Duration"), yaxis=dict(title="Task Count")))
             st.plotly_chart(fig, use_container_width=True)
 
