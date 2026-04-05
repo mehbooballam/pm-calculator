@@ -1,0 +1,4 @@
+flask
+streamlit
+plotly
+pandas

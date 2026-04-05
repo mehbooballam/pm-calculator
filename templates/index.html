@@ -1,0 +1,1576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PM Calculator — EVM &amp; Critical Path</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface2: #334155;
+    --border: #475569;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #eab308;
+    --orange: #f97316;
+    --purple: #a78bfa;
+    --cyan: #06b6d4;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --radius: 10px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+
+  .container { max-width: 1280px; margin: 0 auto; padding: 24px 20px; }
+  header { text-align: center; padding: 32px 0 24px; }
+  header h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; }
+  header p { color: var(--muted); margin-top: 4px; font-size: 0.95rem; }
+
+  .tabs { display: flex; gap: 4px; background: var(--surface); border-radius: var(--radius); padding: 4px; margin-bottom: 28px; max-width: 420px; margin-left: auto; margin-right: auto; }
+  .tab-btn { flex: 1; padding: 10px 16px; border: none; background: transparent; color: var(--muted); font-size: 0.9rem; font-weight: 600; border-radius: 8px; cursor: pointer; transition: all .2s; }
+  .tab-btn.active { background: var(--accent); color: #fff; }
+  .tab-btn:hover:not(.active) { color: var(--text); background: var(--surface2); }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .card { background: var(--surface); border: 1px solid var(--surface2); border-radius: var(--radius); padding: 24px; margin-bottom: 20px; }
+  .card h2 { font-size: 1.1rem; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; background: var(--accent); font-weight: 500; }
+
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .field label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .field input { width: 100%; padding: 10px 14px; border: 1px solid var(--surface2); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 0.95rem; transition: border-color .2s; }
+  .field input:focus { outline: none; border-color: var(--accent); }
+  .field .hint { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+  .btn { padding: 10px 28px; border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all .2s; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-secondary { background: var(--surface2); color: var(--text); }
+  .btn-secondary:hover { background: var(--border); }
+  .btn-row { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+
+  .results-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-top: 20px; }
+  .metric-card { background: var(--bg); border: 1px solid var(--surface2); border-radius: 8px; padding: 16px; text-align: center; transition: border-color .3s; }
+  .metric-card.good { border-color: var(--green); }
+  .metric-card.bad { border-color: var(--red); }
+  .metric-card.warn { border-color: var(--yellow); }
+  .metric-card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+  .metric-card .value { font-size: 1.5rem; font-weight: 700; margin-top: 4px; }
+  .metric-card .sub { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+  .metric-card .value.good { color: var(--green); }
+  .metric-card .value.bad { color: var(--red); }
+  .metric-card .value.warn { color: var(--yellow); }
+
+  .table-wrap { overflow-x: auto; margin-top: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th { background: var(--bg); color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; font-size: 0.7rem; padding: 10px 12px; text-align: left; border-bottom: 2px solid var(--surface2); }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--surface2); }
+  tr.critical-row { background: rgba(239, 68, 68, 0.08); }
+  tr.critical-row td { color: var(--red); font-weight: 600; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }
+  .tag-crit { background: rgba(239, 68, 68, 0.15); color: var(--red); }
+  .tag-ok { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+
+  .cp-banner { background: linear-gradient(135deg, rgba(239,68,68,0.12), rgba(239,68,68,0.04)); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 16px 20px; margin-top: 16px; }
+  .cp-banner .path { font-size: 1.1rem; font-weight: 700; color: var(--red); margin-top: 4px; letter-spacing: 0.5px; }
+  .cp-banner .dur { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+
+  .task-row { display: grid; grid-template-columns: 80px 1fr 100px 1fr 50px; gap: 10px; align-items: end; margin-bottom: 8px; }
+  .task-row input { width: 100%; padding: 8px 10px; border: 1px solid var(--surface2); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 0.85rem; }
+  .task-row input:focus { outline: none; border-color: var(--accent); }
+  .remove-btn { width: 36px; height: 36px; border: none; background: rgba(239,68,68,0.15); color: var(--red); border-radius: 6px; cursor: pointer; font-size: 1.1rem; transition: background .2s; display: flex; align-items: center; justify-content: center; }
+  .remove-btn:hover { background: rgba(239,68,68,0.3); }
+  .task-header { display: grid; grid-template-columns: 80px 1fr 100px 1fr 50px; gap: 10px; margin-bottom: 6px; }
+  .task-header span { font-size: 0.7rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .error-msg { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: var(--red); padding: 12px 16px; border-radius: 8px; margin-top: 16px; font-size: 0.9rem; display: none; }
+
+  .interpretation { background: var(--bg); border: 1px solid var(--surface2); border-radius: 8px; padding: 16px; margin-top: 16px; }
+  .interpretation h3 { font-size: 0.85rem; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .interpretation ul { padding-left: 18px; }
+  .interpretation li { font-size: 0.85rem; margin-bottom: 4px; }
+
+  .formulas { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-top: 12px; }
+  .formula-item { background: var(--bg); border: 1px solid var(--surface2); border-radius: 6px; padding: 10px 14px; }
+  .formula-item .fname { font-size: 0.8rem; font-weight: 700; color: var(--accent); }
+  .formula-item .fdef { font-size: 0.8rem; color: var(--muted); font-family: 'Courier New', monospace; }
+
+  /* Period data table */
+  .period-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .period-table th { background: var(--bg); color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; font-size: 0.7rem; padding: 8px 6px; text-align: center; border-bottom: 2px solid var(--surface2); }
+  .period-table td { padding: 4px 4px; text-align: center; border-bottom: 1px solid var(--surface2); }
+  .period-table input { width: 100%; padding: 7px 6px; border: 1px solid var(--surface2); border-radius: 5px; background: var(--bg); color: var(--text); font-size: 0.85rem; text-align: center; }
+  .period-table input:focus { outline: none; border-color: var(--accent); }
+  .period-table .row-label { color: var(--muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.3px; text-align: left; padding-left: 8px; white-space: nowrap; }
+  .period-table .remove-col { width: 32px; }
+  .period-table .remove-col button { width: 26px; height: 26px; border: none; background: rgba(239,68,68,0.15); color: var(--red); border-radius: 4px; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; }
+
+  /* Charts */
+  .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 0; }
+  .charts-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 0; }
+  .charts-row + .charts-row, .charts-row + .charts-row-3, .charts-row-3 + .charts-row, .charts-row-3 + .charts-row-3 { margin-top: 16px; }
+  .chart-box { background: var(--bg); border: 1px solid var(--surface2); border-radius: 8px; padding: 16px; position: relative; }
+  .chart-box.full { grid-column: 1 / -1; }
+  .chart-box h3 { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; margin-bottom: 10px; }
+  .chart-box canvas { width: 100% !important; max-height: 300px; }
+  .chart-box.tall canvas { max-height: 400px; }
+  .gantt-container { overflow-x: auto; margin-top: 16px; }
+  .gantt-container canvas { min-width: 600px; }
+
+  @media (max-width: 900px) {
+    .charts-row-3 { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 768px) {
+    .charts-row, .charts-row-3 { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 640px) {
+    .task-row, .task-header { grid-template-columns: 1fr; }
+    .results-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>Project Management Calculator</h1>
+    <p>Earned Value Management &amp; Critical Path Analysis</p>
+  </header>
+
+  <div class="tabs" style="max-width:560px;">
+    <button class="tab-btn active" onclick="switchTab('evm', this)">EVM Metrics</button>
+    <button class="tab-btn" onclick="switchTab('scurve', this)">S-Curve Tracker</button>
+    <button class="tab-btn" onclick="switchTab('cp', this)">Critical Path</button>
+    <button class="tab-btn" onclick="switchTab('ref', this)">Formulas</button>
+  </div>
+
+  <!-- ==================== EVM TAB ==================== -->
+  <div id="tab-evm" class="tab-content active">
+    <div class="card">
+      <h2>Input Parameters <span class="badge">Required</span></h2>
+      <div class="form-grid">
+        <div class="field">
+          <label>BAC — Budget at Completion</label>
+          <input type="number" id="bac" placeholder="e.g. 500000" step="any">
+          <div class="hint">Total planned budget for the project</div>
+        </div>
+        <div class="field">
+          <label>PV — Planned Value</label>
+          <input type="number" id="pv" placeholder="e.g. 200000" step="any">
+          <div class="hint">Budgeted cost of work scheduled</div>
+        </div>
+        <div class="field">
+          <label>EV — Earned Value</label>
+          <input type="number" id="ev" placeholder="e.g. 180000" step="any">
+          <div class="hint">Budgeted cost of work performed</div>
+        </div>
+        <div class="field">
+          <label>AC — Actual Cost</label>
+          <input type="number" id="ac" placeholder="e.g. 210000" step="any">
+          <div class="hint">Actual cost of work performed</div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="calculateEVM()">Calculate EVM</button>
+        <button class="btn btn-secondary" onclick="clearEVM()">Clear</button>
+      </div>
+      <div id="evm-error" class="error-msg"></div>
+    </div>
+
+    <div id="evm-results" style="display:none">
+      <div class="card">
+        <h2>Performance Indices</h2>
+        <div class="results-grid" id="indices-grid"></div>
+      </div>
+      <div class="card">
+        <h2>Variances</h2>
+        <div class="results-grid" id="variance-grid"></div>
+      </div>
+      <div class="card">
+        <h2>Forecasting</h2>
+        <div class="results-grid" id="forecast-grid"></div>
+      </div>
+
+      <!-- ===== CHARTS SECTION ===== -->
+      <div class="card">
+        <h2>Visual Analysis — Budget &amp; Cost</h2>
+        <div class="charts-row">
+          <div class="chart-box">
+            <h3>Budget vs Actuals Comparison</h3>
+            <canvas id="chart-budget"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Planned vs Earned vs Actual</h3>
+            <canvas id="chart-pva-radar"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Visual Analysis — Performance Indices</h2>
+        <div class="charts-row">
+          <div class="chart-box">
+            <h3>CPI / SPI / TCPI — Bar Gauge</h3>
+            <canvas id="chart-indices"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Cost Efficiency Breakdown</h3>
+            <canvas id="chart-efficiency"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Visual Analysis — Forecasting &amp; Variance</h2>
+        <div class="charts-row">
+          <div class="chart-box">
+            <h3>EAC Forecast Comparison</h3>
+            <canvas id="chart-eac"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Variance Analysis (CV, SV, VAC)</h3>
+            <canvas id="chart-variance"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Visual Analysis — Progress &amp; Health</h2>
+        <div class="charts-row-3">
+          <div class="chart-box">
+            <h3>Work Progress</h3>
+            <canvas id="chart-progress"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Budget Consumption</h3>
+            <canvas id="chart-budget-donut"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Remaining Work vs Budget</h3>
+            <canvas id="chart-remaining"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Visual Analysis — Comprehensive Comparison</h2>
+        <div class="charts-row">
+          <div class="chart-box">
+            <h3>All Values Waterfall</h3>
+            <canvas id="chart-waterfall"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Project Health Radar</h3>
+            <canvas id="chart-health-radar"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Visual Analysis — To-Complete &amp; Budget at Completion</h2>
+        <div class="charts-row">
+          <div class="chart-box">
+            <h3>TCPI Targets (BAC vs EAC)</h3>
+            <canvas id="chart-tcpi"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Budget Breakdown — Spent vs ETC vs Overrun</h3>
+            <canvas id="chart-budget-stack"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Interpretation</h2>
+        <div class="interpretation" id="interpretation"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== S-CURVE TRACKER TAB ==================== -->
+  <div id="tab-scurve" class="tab-content">
+    <div class="card">
+      <h2>Period-by-Period Data Entry <span class="badge">Cumulative Values</span></h2>
+      <p style="font-size:0.85rem;color:var(--muted);margin-bottom:14px;">
+        Enter <strong>cumulative</strong> PV, EV, and AC values for each period (month, week, sprint, etc.).
+        The tool will generate S-Curve, CPI/SPI trends, variance trends, and more.
+      </p>
+      <div class="form-grid" style="margin-bottom:16px;">
+        <div class="field">
+          <label>BAC — Budget at Completion</label>
+          <input type="number" id="scurve-bac" placeholder="e.g. 500000" step="any">
+          <div class="hint">Total project budget (shown as reference line)</div>
+        </div>
+        <div class="field">
+          <label>Period Label</label>
+          <input type="text" id="scurve-period-label" placeholder="e.g. Month, Week, Sprint" value="Month">
+          <div class="hint">Label for X-axis on charts</div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="period-table" id="period-table">
+          <thead>
+            <tr id="period-header-row">
+              <th style="text-align:left;padding-left:8px;">Metric</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr id="pv-row"><td class="row-label">PV (Planned Value)</td></tr>
+            <tr id="ev-row"><td class="row-label">EV (Earned Value)</td></tr>
+            <tr id="ac-row"><td class="row-label">AC (Actual Cost)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="addPeriodColumn()">+ Add Period</button>
+        <button class="btn btn-secondary" onclick="removePeriodColumn()">- Remove Last</button>
+        <button class="btn btn-secondary" onclick="loadSampleSCurve()">Load Sample Data</button>
+        <button class="btn btn-primary" onclick="generateSCurve()">Generate S-Curve Charts</button>
+      </div>
+      <div id="scurve-error" class="error-msg"></div>
+    </div>
+
+    <div id="scurve-results" style="display:none">
+      <!-- S-Curve Main -->
+      <div class="card">
+        <h2>S-Curve — PV vs EV vs AC Over Time</h2>
+        <div class="chart-box full" style="padding:20px;">
+          <canvas id="chart-scurve" style="max-height:400px;"></canvas>
+        </div>
+      </div>
+
+      <!-- CPI / SPI Trend -->
+      <div class="card">
+        <h2>Performance Trends Over Time</h2>
+        <div class="charts-row">
+          <div class="chart-box">
+            <h3>CPI Trend</h3>
+            <canvas id="chart-cpi-trend"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>SPI Trend</h3>
+            <canvas id="chart-spi-trend"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Variance Trends -->
+      <div class="card">
+        <h2>Variance Trends Over Time</h2>
+        <div class="charts-row">
+          <div class="chart-box">
+            <h3>Cost Variance (CV) Trend</h3>
+            <canvas id="chart-cv-trend"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Schedule Variance (SV) Trend</h3>
+            <canvas id="chart-sv-trend"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Period-over-period spending -->
+      <div class="card">
+        <h2>Period-over-Period Analysis</h2>
+        <div class="charts-row">
+          <div class="chart-box">
+            <h3>Incremental Spend per Period</h3>
+            <canvas id="chart-incremental"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Cumulative % Complete vs % Spent</h3>
+            <canvas id="chart-pct-trend"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- EAC trend + combined CPI/SPI -->
+      <div class="card">
+        <h2>Forecasting Trends</h2>
+        <div class="charts-row">
+          <div class="chart-box">
+            <h3>EAC Forecast Trend (BAC/CPI)</h3>
+            <canvas id="chart-eac-trend"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>CPI vs SPI Combined</h3>
+            <canvas id="chart-cpi-spi-combined"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Period data summary table -->
+      <div class="card">
+        <h2>Period Summary Table</h2>
+        <div class="table-wrap">
+          <table id="scurve-summary-table">
+            <thead><tr></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== CRITICAL PATH TAB ==================== -->
+  <div id="tab-cp" class="tab-content">
+    <div class="card">
+      <h2>Task Definitions <span class="badge">Add Tasks</span></h2>
+      <p style="font-size:0.85rem;color:var(--muted);margin-bottom:14px;">
+        Define tasks with durations and predecessor IDs (comma-separated). Leave predecessors empty for starting tasks.
+      </p>
+      <div class="task-header">
+        <span>Task ID</span>
+        <span>Task Name</span>
+        <span>Duration</span>
+        <span>Predecessors</span>
+        <span></span>
+      </div>
+      <div id="task-list"></div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="addTaskRow()">+ Add Task</button>
+        <button class="btn btn-secondary" onclick="loadSample()">Load Sample</button>
+        <button class="btn btn-primary" onclick="calculateCP()">Find Critical Path</button>
+      </div>
+      <div id="cp-error" class="error-msg"></div>
+    </div>
+
+    <div id="cp-results" style="display:none">
+      <div class="card">
+        <h2>Critical Path</h2>
+        <div class="cp-banner" id="cp-banner"></div>
+      </div>
+      <div class="card">
+        <h2>Gantt Chart</h2>
+        <div class="gantt-container">
+          <canvas id="chart-gantt"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Task Analysis Charts</h2>
+        <div class="charts-row">
+          <div class="chart-box">
+            <h3>Task Duration Comparison</h3>
+            <canvas id="chart-task-dur"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Total Float by Task</h3>
+            <canvas id="chart-task-float"></canvas>
+          </div>
+        </div>
+        <div class="charts-row" style="margin-top:16px;">
+          <div class="chart-box">
+            <h3>Critical vs Non-Critical Split</h3>
+            <canvas id="chart-crit-pie"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>ES / EF / LS / LF Timeline Compare</h3>
+            <canvas id="chart-timeline"></canvas>
+          </div>
+        </div>
+        <div class="charts-row" style="margin-top:16px;">
+          <div class="chart-box">
+            <h3>Duration Distribution</h3>
+            <canvas id="chart-dur-dist"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Resource Density Over Time</h3>
+            <canvas id="chart-density"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Task Schedule</h2>
+        <div class="table-wrap">
+          <table id="cp-table">
+            <thead>
+              <tr>
+                <th>ID</th><th>Name</th><th>Duration</th>
+                <th>ES</th><th>EF</th><th>LS</th><th>LF</th>
+                <th>Total Float</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== FORMULAS TAB ==================== -->
+  <div id="tab-ref" class="tab-content">
+    <div class="card">
+      <h2>EVM Formulas Reference</h2>
+      <div class="formulas">
+        <div class="formula-item"><div class="fname">Cost Variance (CV)</div><div class="fdef">CV = EV - AC</div></div>
+        <div class="formula-item"><div class="fname">Schedule Variance (SV)</div><div class="fdef">SV = EV - PV</div></div>
+        <div class="formula-item"><div class="fname">Cost Performance Index (CPI)</div><div class="fdef">CPI = EV / AC</div></div>
+        <div class="formula-item"><div class="fname">Schedule Performance Index (SPI)</div><div class="fdef">SPI = EV / PV</div></div>
+        <div class="formula-item"><div class="fname">EAC (using CPI)</div><div class="fdef">EAC = BAC / CPI</div></div>
+        <div class="formula-item"><div class="fname">EAC (atypical variance)</div><div class="fdef">EAC = AC + (BAC - EV)</div></div>
+        <div class="formula-item"><div class="fname">EAC (CPI &times; SPI)</div><div class="fdef">EAC = AC + (BAC-EV)/(CPI&times;SPI)</div></div>
+        <div class="formula-item"><div class="fname">Estimate to Complete (ETC)</div><div class="fdef">ETC = EAC - AC</div></div>
+        <div class="formula-item"><div class="fname">Variance at Completion (VAC)</div><div class="fdef">VAC = BAC - EAC</div></div>
+        <div class="formula-item"><div class="fname">TCPI (to meet BAC)</div><div class="fdef">TCPI = (BAC-EV) / (BAC-AC)</div></div>
+        <div class="formula-item"><div class="fname">TCPI (to meet EAC)</div><div class="fdef">TCPI = (BAC-EV) / (EAC-AC)</div></div>
+        <div class="formula-item"><div class="fname">% Complete</div><div class="fdef">% = (EV / BAC) &times; 100</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Critical Path Method (CPM)</h2>
+      <div class="formulas">
+        <div class="formula-item"><div class="fname">Early Start (ES)</div><div class="fdef">ES = max(EF of predecessors)</div></div>
+        <div class="formula-item"><div class="fname">Early Finish (EF)</div><div class="fdef">EF = ES + Duration</div></div>
+        <div class="formula-item"><div class="fname">Late Finish (LF)</div><div class="fdef">LF = min(LS of successors)</div></div>
+        <div class="formula-item"><div class="fname">Late Start (LS)</div><div class="fdef">LS = LF - Duration</div></div>
+        <div class="formula-item"><div class="fname">Total Float</div><div class="fdef">Float = LS - ES (or LF - EF)</div></div>
+        <div class="formula-item"><div class="fname">Critical Path</div><div class="fdef">Tasks where Total Float = 0</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Interpretation Guide</h2>
+      <div class="interpretation">
+        <ul>
+          <li><strong>CPI &gt; 1.0</strong> &mdash; Under budget (good)</li>
+          <li><strong>CPI &lt; 1.0</strong> &mdash; Over budget (bad)</li>
+          <li><strong>SPI &gt; 1.0</strong> &mdash; Ahead of schedule (good)</li>
+          <li><strong>SPI &lt; 1.0</strong> &mdash; Behind schedule (bad)</li>
+          <li><strong>TCPI &gt; 1.0</strong> &mdash; Must improve efficiency to meet target</li>
+          <li><strong>TCPI &lt; 1.0</strong> &mdash; Can relax efficiency and still meet target</li>
+          <li><strong>Total Float = 0</strong> &mdash; Task is on the critical path; any delay extends the project</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Tab switching ───
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ─── Chart setup ───
+Chart.defaults.color = '#94a3b8';
+Chart.defaults.borderColor = '#334155';
+Chart.defaults.font.family = "'Segoe UI', system-ui, sans-serif";
+
+const allCharts = {};
+function dc(name) { if (allCharts[name]) allCharts[name].destroy(); }
+function sc(name, chart) { allCharts[name] = chart; }
+const G = '#1e293b'; // grid color
+
+function dollarTick(v) { return '$' + (Math.abs(v) >= 1000 ? (v/1000).toFixed(0) + 'k' : v); }
+function dollarTip(ctx) { return '$' + Number(ctx.raw).toLocaleString(undefined, {maximumFractionDigits:0}); }
+function n(v) { return v === 'N/A' ? 0 : Number(v); }
+
+// ─── EVM ───
+function calculateEVM() {
+  const payload = {
+    bac: document.getElementById('bac').value,
+    ev:  document.getElementById('ev').value,
+    pv:  document.getElementById('pv').value,
+    ac:  document.getElementById('ac').value,
+  };
+  const errEl = document.getElementById('evm-error');
+  errEl.style.display = 'none';
+
+  fetch('/api/evm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.error) { errEl.textContent = d.error; errEl.style.display = 'block'; return; }
+    renderEVM(d);
+  })
+  .catch(() => { errEl.textContent = 'Network error.'; errEl.style.display = 'block'; });
+}
+
+function renderEVM(d) {
+  document.getElementById('evm-results').style.display = 'block';
+
+  const cpiClass = val => val === 'N/A' ? '' : val >= 1 ? 'good' : 'bad';
+  const varClass = val => val === 'N/A' ? '' : val >= 0 ? 'good' : 'bad';
+
+  document.getElementById('indices-grid').innerHTML =
+    metric('CPI', d.cpi, 'Cost Performance Index', cpiClass(d.cpi)) +
+    metric('SPI', d.spi, 'Schedule Performance Index', cpiClass(d.spi)) +
+    metric('TCPI (BAC)', d.tcpi_bac, 'To meet BAC', d.tcpi_bac !== 'N/A' && d.tcpi_bac > 1 ? 'warn' : 'good') +
+    metric('TCPI (EAC)', d.tcpi_eac, 'To meet EAC', '') +
+    metric('% Complete', d.pct_complete !== 'N/A' ? d.pct_complete + '%' : 'N/A', 'EV / BAC', '') +
+    metric('% Spent', d.pct_spent !== 'N/A' ? d.pct_spent + '%' : 'N/A', 'AC / BAC', '');
+
+  document.getElementById('variance-grid').innerHTML =
+    metric('CV', fmt(d.cv), 'Cost Variance (EV-AC)', varClass(d.cv)) +
+    metric('SV', fmt(d.sv), 'Schedule Variance (EV-PV)', varClass(d.sv)) +
+    metric('VAC', fmt(d.vac), 'Variance at Completion', varClass(d.vac));
+
+  document.getElementById('forecast-grid').innerHTML =
+    metric('EAC (CPI)', fmt(d.eac_cpi), 'BAC / CPI', '') +
+    metric('EAC (Atypical)', fmt(d.eac_ac), 'AC + (BAC-EV)', '') +
+    metric('EAC (CPI*SPI)', fmt(d.eac_combined), 'AC+(BAC-EV)/(CPI*SPI)', '') +
+    metric('ETC', fmt(d.etc), 'Estimate to Complete', '');
+
+  // Interpretation
+  const interp = [];
+  if (d.cpi !== 'N/A') interp.push(d.cpi >= 1
+    ? `<li style="color:var(--green)">CPI = ${d.cpi} — Project is <strong>under budget</strong>. For every $1 spent, $${d.cpi} of value is earned.</li>`
+    : `<li style="color:var(--red)">CPI = ${d.cpi} — Project is <strong>over budget</strong>. For every $1 spent, only $${d.cpi} of value is earned.</li>`);
+  if (d.spi !== 'N/A') interp.push(d.spi >= 1
+    ? `<li style="color:var(--green)">SPI = ${d.spi} — Project is <strong>ahead of schedule</strong>.</li>`
+    : `<li style="color:var(--red)">SPI = ${d.spi} — Project is <strong>behind schedule</strong>.</li>`);
+  if (d.tcpi_bac !== 'N/A') interp.push(d.tcpi_bac > 1
+    ? `<li style="color:var(--yellow)">TCPI (BAC) = ${d.tcpi_bac} — Must achieve CPI of ${d.tcpi_bac} on remaining work to finish within budget.</li>`
+    : `<li style="color:var(--green)">TCPI (BAC) = ${d.tcpi_bac} — Current pace is sufficient to finish within budget.</li>`);
+  if (d.vac !== 'N/A') interp.push(n(d.vac) >= 0
+    ? `<li style="color:var(--green)">VAC = ${fmt(d.vac)} — Expected to finish <strong>under budget</strong> by this amount.</li>`
+    : `<li style="color:var(--red)">VAC = ${fmt(d.vac)} — Expected to <strong>overrun budget</strong> by ${fmt(Math.abs(n(d.vac)))}.</li>`);
+  document.getElementById('interpretation').innerHTML = '<h3>Analysis</h3><ul>' + interp.join('') + '</ul>';
+
+  // Render all charts
+  const bac = parseFloat(document.getElementById('bac').value);
+  const pv = parseFloat(document.getElementById('pv').value);
+  const ev = parseFloat(document.getElementById('ev').value);
+  const ac = parseFloat(document.getElementById('ac').value);
+  renderAllEVMCharts(d, bac, pv, ev, ac);
+}
+
+function metric(label, value, sub, cls) {
+  return `<div class="metric-card ${cls}"><div class="label">${label}</div><div class="value ${cls}">${value}</div><div class="sub">${sub}</div></div>`;
+}
+function fmt(v) { return v === 'N/A' ? 'N/A' : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 }); }
+
+function clearEVM() {
+  ['bac','pv','ev','ac'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('evm-results').style.display = 'none';
+  document.getElementById('evm-error').style.display = 'none';
+  Object.keys(allCharts).forEach(k => { if (k.startsWith('evm-')) { allCharts[k].destroy(); delete allCharts[k]; } });
+}
+
+// ─── ALL EVM CHARTS ───
+function renderAllEVMCharts(d, bac, pv, ev, ac) {
+  const cpiVal = n(d.cpi), spiVal = n(d.spi), tcpiBac = n(d.tcpi_bac), tcpiEac = n(d.tcpi_eac);
+  const cvVal = n(d.cv), svVal = n(d.sv), vacVal = n(d.vac);
+  const eacCpi = n(d.eac_cpi), eacAc = n(d.eac_ac), eacComb = n(d.eac_combined), etcVal = n(d.etc);
+  const pctDone = n(d.pct_complete), pctSpent = n(d.pct_spent);
+
+  // ── 1. Budget Comparison Bar ──
+  dc('evm-budget');
+  sc('evm-budget', new Chart(document.getElementById('chart-budget'), {
+    type: 'bar',
+    data: {
+      labels: ['BAC', 'PV', 'EV', 'AC'],
+      datasets: [{
+        data: [bac, pv, ev, ac],
+        backgroundColor: ['#3b82f6', '#a78bfa', '#22c55e', ac > ev ? '#ef4444' : '#f59e0b'],
+        borderRadius: 6, borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: dollarTip } } },
+      scales: { y: { beginAtZero: true, grid: { color: G }, ticks: { callback: dollarTick } }, x: { grid: { display: false } } }
+    }
+  }));
+
+  // ── 2. PV / EV / AC Radar ──
+  dc('evm-pva-radar');
+  const maxVal = Math.max(bac, pv, ev, ac) * 1.2;
+  sc('evm-pva-radar', new Chart(document.getElementById('chart-pva-radar'), {
+    type: 'radar',
+    data: {
+      labels: ['BAC', 'PV', 'EV', 'AC', 'EAC', 'ETC'],
+      datasets: [
+        { label: 'Planned', data: [bac, pv, pv, pv, bac, bac - pv], borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.1)', pointBackgroundColor: '#a78bfa', borderWidth: 2 },
+        { label: 'Actual', data: [bac, pv, ev, ac, eacCpi, etcVal], borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', pointBackgroundColor: '#22c55e', borderWidth: 2 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      scales: { r: { beginAtZero: true, grid: { color: '#334155' }, angleLines: { color: '#334155' }, pointLabels: { color: '#94a3b8', font: { size: 11 } }, ticks: { display: false } } },
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 10 } } }
+    }
+  }));
+
+  // ── 3. CPI / SPI / TCPI Horizontal Bar ──
+  dc('evm-indices');
+  sc('evm-indices', new Chart(document.getElementById('chart-indices'), {
+    type: 'bar',
+    data: {
+      labels: ['CPI', 'SPI', 'TCPI (BAC)', 'TCPI (EAC)'],
+      datasets: [{
+        data: [cpiVal, spiVal, tcpiBac, tcpiEac],
+        backgroundColor: [
+          cpiVal >= 1 ? '#22c55e' : '#ef4444',
+          spiVal >= 1 ? '#22c55e' : '#ef4444',
+          tcpiBac > 1 ? '#eab308' : '#22c55e',
+          '#06b6d4'
+        ],
+        borderRadius: 6, borderSkipped: false,
+      }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, grid: { color: G }, ticks: { stepSize: 0.25 } }, y: { grid: { display: false } } }
+    },
+    plugins: [{
+      id: 'thresholdLine',
+      afterDraw(chart) {
+        const xs = chart.scales.x, ys = chart.scales.y;
+        if (xs.min <= 1 && xs.max >= 1) {
+          const x = xs.getPixelForValue(1), ctx = chart.ctx;
+          ctx.save(); ctx.beginPath(); ctx.setLineDash([6,4]); ctx.strokeStyle = '#f1f5f9'; ctx.lineWidth = 1.5;
+          ctx.moveTo(x, ys.top); ctx.lineTo(x, ys.bottom); ctx.stroke(); ctx.restore();
+          ctx.fillStyle = '#94a3b8'; ctx.font = '10px sans-serif'; ctx.fillText('Target: 1.0', x + 4, ys.top + 10);
+        }
+      }
+    }]
+  }));
+
+  // ── 4. Cost Efficiency — Stacked: EV portion of AC ──
+  dc('evm-efficiency');
+  const waste = Math.max(0, ac - ev);
+  const value = Math.min(ev, ac);
+  sc('evm-efficiency', new Chart(document.getElementById('chart-efficiency'), {
+    type: 'bar',
+    data: {
+      labels: ['Actual Cost Breakdown'],
+      datasets: [
+        { label: 'Value Earned (EV)', data: [value], backgroundColor: '#22c55e', borderRadius: 6, borderSkipped: false },
+        { label: 'Cost Overrun (AC-EV)', data: [waste], backgroundColor: '#ef4444', borderRadius: 6, borderSkipped: false },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 10 } }, tooltip: { callbacks: { label: dollarTip } } },
+      scales: {
+        x: { stacked: true, grid: { display: false } },
+        y: { stacked: true, beginAtZero: true, grid: { color: G }, ticks: { callback: dollarTick } }
+      }
+    }
+  }));
+
+  // ── 5. EAC Forecast Comparison ──
+  dc('evm-eac');
+  sc('evm-eac', new Chart(document.getElementById('chart-eac'), {
+    type: 'bar',
+    data: {
+      labels: ['BAC\n(Original)', 'EAC\n(CPI)', 'EAC\n(Atypical)', 'EAC\n(CPI*SPI)'],
+      datasets: [{
+        data: [bac, eacCpi, eacAc, eacComb],
+        backgroundColor: ['#3b82f6', eacCpi>bac?'#ef4444':'#22c55e', eacAc>bac?'#ef4444':'#22c55e', eacComb>bac?'#ef4444':'#22c55e'],
+        borderRadius: 6, borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: dollarTip } } },
+      scales: { y: { beginAtZero: true, grid: { color: G }, ticks: { callback: dollarTick } }, x: { grid: { display: false }, ticks: { font: { size: 10 } } } }
+    }
+  }));
+
+  // ── 6. Variance Analysis — CV, SV, VAC grouped ──
+  dc('evm-variance');
+  sc('evm-variance', new Chart(document.getElementById('chart-variance'), {
+    type: 'bar',
+    data: {
+      labels: ['Cost Variance (CV)', 'Schedule Variance (SV)', 'Variance at Completion (VAC)'],
+      datasets: [{
+        data: [cvVal, svVal, vacVal],
+        backgroundColor: [cvVal>=0?'#22c55e':'#ef4444', svVal>=0?'#22c55e':'#ef4444', vacVal>=0?'#22c55e':'#ef4444'],
+        borderRadius: 6, borderSkipped: false,
+      }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: dollarTip } } },
+      scales: { x: { grid: { color: G }, ticks: { callback: dollarTick } }, y: { grid: { display: false }, ticks: { font: { size: 10 } } } }
+    },
+    plugins: [{
+      id: 'zeroLine',
+      afterDraw(chart) {
+        const xs = chart.scales.x, ys = chart.scales.y;
+        if (xs.min < 0 && xs.max > 0) {
+          const x = xs.getPixelForValue(0), ctx = chart.ctx;
+          ctx.save(); ctx.beginPath(); ctx.setLineDash([4,3]); ctx.strokeStyle = '#f1f5f9'; ctx.lineWidth = 1;
+          ctx.moveTo(x, ys.top); ctx.lineTo(x, ys.bottom); ctx.stroke(); ctx.restore();
+        }
+      }
+    }]
+  }));
+
+  // ── 7. Work Progress Doughnut ──
+  dc('evm-progress');
+  sc('evm-progress', new Chart(document.getElementById('chart-progress'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Complete', 'Remaining'],
+      datasets: [{ data: [pctDone, 100-pctDone], backgroundColor: ['#22c55e', '#1e293b'], borderWidth: 0 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true, cutout: '70%',
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 10 } } }
+    },
+    plugins: [{ id: 'ct1', afterDraw(c) {
+      const {ctx,width,height}=c; ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillStyle='#f1f5f9'; ctx.font='bold 24px sans-serif'; ctx.fillText(pctDone.toFixed(1)+'%',width/2,height/2-6);
+      ctx.fillStyle='#94a3b8'; ctx.font='11px sans-serif'; ctx.fillText('Work Done',width/2,height/2+14); ctx.restore();
+    }}]
+  }));
+
+  // ── 8. Budget Consumption Doughnut ──
+  dc('evm-budget-donut');
+  sc('evm-budget-donut', new Chart(document.getElementById('chart-budget-donut'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Spent', 'Remaining Budget'],
+      datasets: [{ data: [pctSpent, 100-pctSpent], backgroundColor: [pctSpent>pctDone?'#ef4444':'#3b82f6', '#1e293b'], borderWidth: 0 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true, cutout: '70%',
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 10 } } }
+    },
+    plugins: [{ id: 'ct2', afterDraw(c) {
+      const {ctx,width,height}=c; ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillStyle = pctSpent > pctDone ? '#ef4444' : '#3b82f6';
+      ctx.font='bold 24px sans-serif'; ctx.fillText(pctSpent.toFixed(1)+'%',width/2,height/2-6);
+      ctx.fillStyle='#94a3b8'; ctx.font='11px sans-serif'; ctx.fillText('Budget Used',width/2,height/2+14); ctx.restore();
+    }}]
+  }));
+
+  // ── 9. Remaining Work vs Budget Bar ──
+  dc('evm-remaining');
+  const workRemain = bac - ev;
+  const budgetRemain = bac - ac;
+  sc('evm-remaining', new Chart(document.getElementById('chart-remaining'), {
+    type: 'bar',
+    data: {
+      labels: ['Remaining Work\n(BAC-EV)', 'Remaining Budget\n(BAC-AC)', 'ETC\n(Forecast)'],
+      datasets: [{
+        data: [workRemain, budgetRemain, etcVal],
+        backgroundColor: [
+          '#a78bfa',
+          budgetRemain >= workRemain ? '#22c55e' : '#ef4444',
+          '#06b6d4'
+        ],
+        borderRadius: 6, borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: dollarTip } } },
+      scales: { y: { beginAtZero: true, grid: { color: G }, ticks: { callback: dollarTick } }, x: { grid: { display: false }, ticks: { font: { size: 9 } } } }
+    }
+  }));
+
+  // ── 10. All Values Waterfall ──
+  dc('evm-waterfall');
+  sc('evm-waterfall', new Chart(document.getElementById('chart-waterfall'), {
+    type: 'bar',
+    data: {
+      labels: ['BAC', 'PV', 'EV', 'AC', 'CV', 'SV', 'EAC', 'ETC', 'VAC'],
+      datasets: [
+        {
+          label: 'Positive',
+          data: [bac, pv, ev, ac, cvVal>=0?cvVal:0, svVal>=0?svVal:0, eacCpi, etcVal, vacVal>=0?vacVal:0],
+          backgroundColor: ['#3b82f6','#a78bfa','#22c55e','#f59e0b','#22c55e','#22c55e','#06b6d4','#f97316','#22c55e'],
+          borderRadius: 4, borderSkipped: false,
+        },
+        {
+          label: 'Negative',
+          data: [0, 0, 0, 0, cvVal<0?cvVal:0, svVal<0?svVal:0, 0, 0, vacVal<0?vacVal:0],
+          backgroundColor: '#ef4444',
+          borderRadius: 4, borderSkipped: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: dollarTip } } },
+      scales: { y: { grid: { color: G }, ticks: { callback: dollarTick } }, x: { grid: { display: false }, ticks: { font: { size: 9 } } } }
+    }
+  }));
+
+  // ── 11. Project Health Radar ──
+  dc('evm-health');
+  // Normalize: CPI, SPI (1=ideal), cost efficiency (ev/ac), schedule eff (ev/pv), budget health (1 - overrun/bac)
+  const costEff = ac > 0 ? Math.min(ev / ac, 2) : 0;
+  const schedEff = pv > 0 ? Math.min(ev / pv, 2) : 0;
+  const budgetHealth = Math.max(0, Math.min(2, 1 + (bac - eacCpi) / bac));
+  const completionRate = pctDone / 100;
+  const tcpiHealth = tcpiBac > 0 ? Math.min(2, 1 / tcpiBac) : 0;
+  sc('evm-health', new Chart(document.getElementById('chart-health-radar'), {
+    type: 'radar',
+    data: {
+      labels: ['Cost Perf (CPI)', 'Schedule Perf (SPI)', 'Cost Efficiency', 'Budget Health', 'Completion Rate', 'TCPI Feasibility'],
+      datasets: [{
+        label: 'Project Health',
+        data: [Math.min(cpiVal, 2), Math.min(spiVal, 2), costEff, budgetHealth, completionRate, tcpiHealth],
+        borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.15)', pointBackgroundColor: '#3b82f6', borderWidth: 2,
+      }, {
+        label: 'Ideal (1.0)',
+        data: [1, 1, 1, 1, 1, 1],
+        borderColor: 'rgba(34,197,94,0.5)', backgroundColor: 'transparent', pointBackgroundColor: '#22c55e',
+        borderWidth: 1, borderDash: [5, 5], pointRadius: 3,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      scales: { r: { min: 0, max: 2, grid: { color: '#334155' }, angleLines: { color: '#334155' }, pointLabels: { color: '#94a3b8', font: { size: 10 } }, ticks: { display: false, stepSize: 0.5 } } },
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 10, font: { size: 10 } } } }
+    }
+  }));
+
+  // ── 12. TCPI Target Comparison ──
+  dc('evm-tcpi');
+  sc('evm-tcpi', new Chart(document.getElementById('chart-tcpi'), {
+    type: 'bar',
+    data: {
+      labels: ['Current CPI', 'TCPI to meet BAC', 'TCPI to meet EAC'],
+      datasets: [{
+        data: [cpiVal, tcpiBac, tcpiEac],
+        backgroundColor: ['#3b82f6', tcpiBac > cpiVal ? '#ef4444' : '#22c55e', '#06b6d4'],
+        borderRadius: 6, borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, grid: { color: G }, ticks: { stepSize: 0.25 } }, x: { grid: { display: false } } }
+    },
+    plugins: [{
+      id: 'tLine',
+      afterDraw(chart) {
+        const ys = chart.scales.y, xs = chart.scales.x;
+        if (ys.min <= 1 && ys.max >= 1) {
+          const y = ys.getPixelForValue(1), ctx = chart.ctx;
+          ctx.save(); ctx.beginPath(); ctx.setLineDash([6,4]); ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 1.5;
+          ctx.moveTo(xs.left, y); ctx.lineTo(xs.right, y); ctx.stroke(); ctx.restore();
+          ctx.fillStyle='#94a3b8'; ctx.font='10px sans-serif'; ctx.fillText('Ideal: 1.0', xs.right-55, y-6);
+        }
+      }
+    }]
+  }));
+
+  // ── 13. Budget Breakdown Stacked — Spent / ETC / Overrun ──
+  dc('evm-budget-stack');
+  const overrun = Math.max(0, eacCpi - bac);
+  const etcClean = Math.max(0, etcVal);
+  sc('evm-budget-stack', new Chart(document.getElementById('chart-budget-stack'), {
+    type: 'bar',
+    data: {
+      labels: ['Budget Breakdown'],
+      datasets: [
+        { label: 'Spent (AC)', data: [ac], backgroundColor: '#f59e0b', borderSkipped: false },
+        { label: 'Estimate to Complete (ETC)', data: [etcClean], backgroundColor: '#3b82f6', borderSkipped: false },
+        { label: 'Projected Overrun', data: [overrun], backgroundColor: '#ef4444', borderSkipped: false },
+      ]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 10 } }, tooltip: { callbacks: { label: dollarTip } } },
+      scales: {
+        x: { stacked: true, grid: { color: G }, ticks: { callback: dollarTick } },
+        y: { stacked: true, grid: { display: false } }
+      }
+    },
+    plugins: [{
+      id: 'bacLine',
+      afterDraw(chart) {
+        const xs = chart.scales.x, ys = chart.scales.y;
+        if (bac <= xs.max) {
+          const x = xs.getPixelForValue(bac), ctx = chart.ctx;
+          ctx.save(); ctx.beginPath(); ctx.setLineDash([6,4]); ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 2;
+          ctx.moveTo(x, ys.top-5); ctx.lineTo(x, ys.bottom+5); ctx.stroke(); ctx.restore();
+          ctx.fillStyle='#22c55e'; ctx.font='bold 10px sans-serif'; ctx.fillText('BAC', x-10, ys.top-8);
+        }
+      }
+    }]
+  }));
+}
+
+// ─── Critical Path ───
+let taskCounter = 0;
+
+function addTaskRow(id, name, dur, preds) {
+  taskCounter++;
+  const div = document.createElement('div');
+  div.className = 'task-row';
+  div.id = 'trow-' + taskCounter;
+  div.innerHTML = `
+    <input type="text" placeholder="A" value="${id || ''}" class="t-id">
+    <input type="text" placeholder="Task name" value="${name || ''}" class="t-name">
+    <input type="number" placeholder="Days" value="${dur || ''}" step="any" class="t-dur">
+    <input type="text" placeholder="e.g. A,B" value="${preds || ''}" class="t-pred">
+    <button class="remove-btn" onclick="this.parentElement.remove()">&times;</button>`;
+  document.getElementById('task-list').appendChild(div);
+}
+
+function loadSample() {
+  document.getElementById('task-list').innerHTML = '';
+  [['A','Requirements',5,''],['B','Design',8,'A'],['C','Database Setup',4,'A'],
+   ['D','Backend Dev',12,'B'],['E','Frontend Dev',10,'B,C'],['F','Integration',6,'D,E'],
+   ['G','Testing',5,'F'],['H','Deployment',3,'G']].forEach(t => addTaskRow(...t));
+}
+
+function calculateCP() {
+  const rows = document.querySelectorAll('.task-row');
+  const tasks = [];
+  const errEl = document.getElementById('cp-error');
+  errEl.style.display = 'none';
+
+  rows.forEach(row => {
+    const id = row.querySelector('.t-id').value.trim();
+    const name = row.querySelector('.t-name').value.trim();
+    const dur = row.querySelector('.t-dur').value.trim();
+    const preds = row.querySelector('.t-pred').value.trim();
+    if (id && dur) {
+      tasks.push({ id, name: name || id, duration: parseFloat(dur),
+        predecessors: preds ? preds.split(',').map(s => s.trim()).filter(Boolean) : [] });
+    }
+  });
+
+  if (!tasks.length) { errEl.textContent = 'Add at least one task.'; errEl.style.display = 'block'; return; }
+
+  fetch('/api/critical-path', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tasks }),
+  })
+  .then(r => r.json())
+  .then(d => { if (d.error) { errEl.textContent = d.error; errEl.style.display = 'block'; return; } renderCP(d); })
+  .catch(() => { errEl.textContent = 'Network error.'; errEl.style.display = 'block'; });
+}
+
+function renderCP(d) {
+  document.getElementById('cp-results').style.display = 'block';
+
+  document.getElementById('cp-banner').innerHTML =
+    `<div style="color:var(--muted);font-size:0.85rem;">Critical Path (longest sequence — zero float)</div>
+     <div class="path">${d.critical_path.join(' &rarr; ')}</div>
+     <div class="dur">Project Duration: <strong>${d.project_duration} units</strong></div>`;
+
+  const tbody = document.querySelector('#cp-table tbody');
+  tbody.innerHTML = d.tasks.map(t => `
+    <tr class="${t.critical ? 'critical-row' : ''}">
+      <td>${t.id}</td><td>${t.name}</td><td>${t.duration}</td>
+      <td>${t.es}</td><td>${t.ef}</td><td>${t.ls}</td><td>${t.lf}</td>
+      <td>${t.total_float}</td>
+      <td><span class="tag ${t.critical ? 'tag-crit' : 'tag-ok'}">${t.critical ? 'Critical' : 'Float: ' + t.total_float}</span></td>
+    </tr>`).join('');
+
+  renderAllCPCharts(d);
+}
+
+function renderAllCPCharts(d) {
+  const tasks = d.tasks;
+  const labels = tasks.map(t => t.id + ' — ' + t.name);
+  const projectDur = d.project_duration;
+
+  // ── 1. Gantt Chart ──
+  dc('cp-gantt');
+  const canvasEl = document.getElementById('chart-gantt');
+  canvasEl.style.height = Math.max(250, tasks.length * 38 + 60) + 'px';
+  sc('cp-gantt', new Chart(canvasEl, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'Duration (ES → EF)', data: tasks.map(t => [t.es, t.ef]), backgroundColor: tasks.map(t => t.critical ? '#ef4444' : '#3b82f6'), borderRadius: 4, borderSkipped: false, barPercentage: 0.6 },
+        { label: 'Float (slack)', data: tasks.map(t => t.critical ? null : [t.ef, t.lf]), backgroundColor: 'rgba(234,179,8,0.35)', borderRadius: 4, borderSkipped: false, barPercentage: 0.6 }
+      ]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top', labels: { usePointStyle: true, padding: 14, font: { size: 11 } } },
+        tooltip: { callbacks: { label(ctx) { const v=ctx.raw; if(!v)return''; return ctx.dataset.label+': '+v[0]+' → '+v[1]+' ('+(v[1]-v[0])+' units)'; } } } },
+      scales: { x: { min:0, max:projectDur, title:{display:true,text:'Time (units)',color:'#94a3b8'}, grid:{color:G} }, y: { grid:{display:false}, ticks:{font:{size:11}} } }
+    }
+  }));
+
+  // ── 2. Task Duration Comparison ──
+  dc('cp-dur');
+  sc('cp-dur', new Chart(document.getElementById('chart-task-dur'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{ data: tasks.map(t => t.duration), backgroundColor: tasks.map(t => t.critical ? '#ef4444' : '#3b82f6'), borderRadius: 4, borderSkipped: false }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, grid: { color: G }, title: { display: true, text: 'Duration', color: '#94a3b8' } }, x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 45 } } }
+    }
+  }));
+
+  // ── 3. Total Float by Task ──
+  dc('cp-float');
+  sc('cp-float', new Chart(document.getElementById('chart-task-float'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{ label: 'Total Float', data: tasks.map(t => t.total_float), backgroundColor: tasks.map(t => t.critical ? '#ef4444' : '#eab308'), borderRadius: 4, borderSkipped: false }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, grid: { color: G }, title: { display: true, text: 'Float', color: '#94a3b8' } }, x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 45 } } }
+    }
+  }));
+
+  // ── 4. Critical vs Non-Critical Pie ──
+  dc('cp-pie');
+  const critCount = tasks.filter(t => t.critical).length;
+  const nonCritCount = tasks.length - critCount;
+  const critDur = tasks.filter(t => t.critical).reduce((s,t) => s+t.duration, 0);
+  const nonCritDur = tasks.filter(t => !t.critical).reduce((s,t) => s+t.duration, 0);
+  sc('cp-pie', new Chart(document.getElementById('chart-crit-pie'), {
+    type: 'doughnut',
+    data: {
+      labels: [`Critical (${critCount} tasks, ${critDur} units)`, `Non-Critical (${nonCritCount} tasks, ${nonCritDur} units)`],
+      datasets: [{ data: [critDur, nonCritDur], backgroundColor: ['#ef4444', '#3b82f6'], borderWidth: 0 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true, cutout: '50%',
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 10, font: { size: 10 } } } }
+    }
+  }));
+
+  // ── 5. ES / EF / LS / LF Timeline Grouped ──
+  dc('cp-timeline');
+  sc('cp-timeline', new Chart(document.getElementById('chart-timeline'), {
+    type: 'bar',
+    data: {
+      labels: tasks.map(t => t.id),
+      datasets: [
+        { label: 'ES', data: tasks.map(t => t.es), backgroundColor: '#3b82f6', borderRadius: 3 },
+        { label: 'EF', data: tasks.map(t => t.ef), backgroundColor: '#22c55e', borderRadius: 3 },
+        { label: 'LS', data: tasks.map(t => t.ls), backgroundColor: '#a78bfa', borderRadius: 3 },
+        { label: 'LF', data: tasks.map(t => t.lf), backgroundColor: '#f97316', borderRadius: 3 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { position: 'top', labels: { usePointStyle: true, padding: 10, font: { size: 10 } } } },
+      scales: { y: { beginAtZero: true, grid: { color: G }, title: { display: true, text: 'Time', color: '#94a3b8' } }, x: { grid: { display: false } } }
+    }
+  }));
+
+  // ── 6. Duration Distribution (histogram-like) ──
+  dc('cp-dur-dist');
+  const durations = tasks.map(t => t.duration).sort((a,b) => a-b);
+  const minD = Math.floor(durations[0]), maxD = Math.ceil(durations[durations.length-1]);
+  const bucketSize = Math.max(1, Math.ceil((maxD - minD + 1) / 5));
+  const buckets = [];
+  for (let i = minD; i <= maxD; i += bucketSize) {
+    const lo = i, hi = i + bucketSize;
+    const count = durations.filter(d => d >= lo && d < hi).length;
+    buckets.push({ label: `${lo}-${hi-1}`, count });
+  }
+  sc('cp-dur-dist', new Chart(document.getElementById('chart-dur-dist'), {
+    type: 'bar',
+    data: {
+      labels: buckets.map(b => b.label + ' units'),
+      datasets: [{ label: 'Tasks', data: buckets.map(b => b.count), backgroundColor: '#a78bfa', borderRadius: 4, borderSkipped: false }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, grid: { color: G }, title: { display: true, text: 'Task Count', color: '#94a3b8' }, ticks: { stepSize: 1 } }, x: { grid: { display: false } } }
+    }
+  }));
+
+  // ── 7. Resource Density (tasks active per time unit) ──
+  dc('cp-density');
+  const density = [];
+  for (let t = 0; t < projectDur; t++) {
+    let active = 0, critActive = 0;
+    tasks.forEach(task => {
+      if (t >= task.es && t < task.ef) { active++; if (task.critical) critActive++; }
+    });
+    density.push({ t, active, critActive, nonCrit: active - critActive });
+  }
+  sc('cp-density', new Chart(document.getElementById('chart-density'), {
+    type: 'line',
+    data: {
+      labels: density.map(d => d.t),
+      datasets: [
+        { label: 'Critical Tasks', data: density.map(d => d.critActive), borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.15)', fill: true, tension: 0.3, pointRadius: 0 },
+        { label: 'Non-Critical Tasks', data: density.map(d => d.nonCrit), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.15)', fill: true, tension: 0.3, pointRadius: 0 },
+        { label: 'Total Active', data: density.map(d => d.active), borderColor: '#f1f5f9', backgroundColor: 'transparent', borderWidth: 1, borderDash: [4,3], tension: 0.3, pointRadius: 0 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { position: 'top', labels: { usePointStyle: true, padding: 10, font: { size: 10 } } } },
+      scales: {
+        y: { beginAtZero: true, grid: { color: G }, title: { display: true, text: 'Active Tasks', color: '#94a3b8' }, ticks: { stepSize: 1 } },
+        x: { grid: { color: G }, title: { display: true, text: 'Time (units)', color: '#94a3b8' } }
+      }
+    }
+  }));
+}
+
+// ─── S-CURVE TRACKER ───
+let periodCount = 0;
+
+function addPeriodColumn(pvVal, evVal, acVal) {
+  periodCount++;
+  const num = periodCount;
+  // Add header
+  const headerRow = document.getElementById('period-header-row');
+  const th = document.createElement('th');
+  th.id = 'ph-' + num;
+  th.textContent = num;
+  headerRow.appendChild(th);
+  // Add cells
+  [['pv-row','sp-pv-'],['ev-row','sp-ev-'],['ac-row','sp-ac-']].forEach(([rowId, prefix], idx) => {
+    const td = document.createElement('td');
+    td.id = prefix + num;
+    const val = [pvVal, evVal, acVal][idx];
+    td.innerHTML = `<input type="number" step="any" placeholder="0" value="${val !== undefined ? val : ''}">`;
+    document.getElementById(rowId).appendChild(td);
+  });
+}
+
+function removePeriodColumn() {
+  if (periodCount < 1) return;
+  const num = periodCount;
+  const el = (id) => { const e = document.getElementById(id); if (e) e.remove(); };
+  el('ph-' + num);
+  el('sp-pv-' + num);
+  el('sp-ev-' + num);
+  el('sp-ac-' + num);
+  periodCount--;
+}
+
+function loadSampleSCurve() {
+  // Clear existing
+  while (periodCount > 0) removePeriodColumn();
+  document.getElementById('scurve-bac').value = 100000;
+  document.getElementById('scurve-period-label').value = 'Month';
+  // Sample 12-month project data (cumulative)
+  const pvData = [2000, 6000, 14000, 24000, 38000, 54000, 68000, 80000, 88000, 94000, 98000, 100000];
+  const evData = [1500, 5000, 12000, 20000, 32000, 46000, 58000, 72000, 82000, 90000, 96000, 100000];
+  const acData = [2500, 8000, 16000, 28000, 42000, 58000, 74000, 88000, 98000, 106000, 112000, 120000];
+  for (let i = 0; i < 12; i++) addPeriodColumn(pvData[i], evData[i], acData[i]);
+}
+
+function collectPeriodData() {
+  const pvArr = [], evArr = [], acArr = [], labels = [];
+  const periodLabel = document.getElementById('scurve-period-label').value || 'Period';
+  for (let i = 1; i <= periodCount; i++) {
+    const pvEl = document.querySelector('#sp-pv-' + i + ' input');
+    const evEl = document.querySelector('#sp-ev-' + i + ' input');
+    const acEl = document.querySelector('#sp-ac-' + i + ' input');
+    if (!pvEl || !evEl || !acEl) continue;
+    const pv = parseFloat(pvEl.value) || 0;
+    const ev = parseFloat(evEl.value) || 0;
+    const ac = parseFloat(acEl.value) || 0;
+    pvArr.push(pv); evArr.push(ev); acArr.push(ac);
+    labels.push(periodLabel + ' ' + i);
+  }
+  return { pvArr, evArr, acArr, labels };
+}
+
+function generateSCurve() {
+  const errEl = document.getElementById('scurve-error');
+  errEl.style.display = 'none';
+  const bacVal = parseFloat(document.getElementById('scurve-bac').value);
+  if (!bacVal || bacVal <= 0) { errEl.textContent = 'Enter a valid BAC value.'; errEl.style.display = 'block'; return; }
+  const { pvArr, evArr, acArr, labels } = collectPeriodData();
+  if (pvArr.length < 2) { errEl.textContent = 'Enter data for at least 2 periods.'; errEl.style.display = 'block'; return; }
+
+  document.getElementById('scurve-results').style.display = 'block';
+
+  // Compute derived data
+  const cpiArr = [], spiArr = [], cvArr = [], svArr = [], eacArr = [], pctComplete = [], pctSpent = [];
+  const incPV = [], incEV = [], incAC = [];
+  for (let i = 0; i < pvArr.length; i++) {
+    cpiArr.push(acArr[i] !== 0 ? evArr[i] / acArr[i] : 0);
+    spiArr.push(pvArr[i] !== 0 ? evArr[i] / pvArr[i] : 0);
+    cvArr.push(evArr[i] - acArr[i]);
+    svArr.push(evArr[i] - pvArr[i]);
+    eacArr.push(cpiArr[i] !== 0 ? bacVal / cpiArr[i] : 0);
+    pctComplete.push((evArr[i] / bacVal) * 100);
+    pctSpent.push((acArr[i] / bacVal) * 100);
+    incPV.push(i === 0 ? pvArr[0] : pvArr[i] - pvArr[i-1]);
+    incEV.push(i === 0 ? evArr[0] : evArr[i] - evArr[i-1]);
+    incAC.push(i === 0 ? acArr[0] : acArr[i] - acArr[i-1]);
+  }
+
+  // ── 1. S-CURVE (main chart like the reference images) ──
+  dc('sc-main');
+  sc('sc-main', new Chart(document.getElementById('chart-scurve'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Planned Value (PV)',
+          data: pvArr,
+          borderColor: '#1e293b',
+          backgroundColor: '#1e293b',
+          borderWidth: 3,
+          pointBackgroundColor: '#1e293b',
+          pointBorderColor: '#1e293b',
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          tension: 0.3,
+          fill: false,
+        },
+        {
+          label: 'Actual Cost (AC)',
+          data: acArr,
+          borderColor: '#ef4444',
+          backgroundColor: '#ef4444',
+          borderWidth: 3,
+          pointBackgroundColor: '#ef4444',
+          pointBorderColor: '#ef4444',
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          tension: 0.3,
+          fill: false,
+        },
+        {
+          label: 'Earned Value (EV)',
+          data: evArr,
+          borderColor: '#22c55e',
+          backgroundColor: '#22c55e',
+          borderWidth: 3,
+          pointBackgroundColor: '#22c55e',
+          pointBorderColor: '#22c55e',
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          tension: 0.3,
+          fill: false,
+        },
+        {
+          label: 'BAC (Budget)',
+          data: Array(pvArr.length).fill(bacVal),
+          borderColor: '#3b82f6',
+          borderWidth: 2,
+          borderDash: [8, 4],
+          pointRadius: 0,
+          fill: false,
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'bottom', labels: { usePointStyle: true, padding: 16, font: { size: 12, weight: '600' } } },
+        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': $' + Number(ctx.raw).toLocaleString() } }
+      },
+      scales: {
+        y: { beginAtZero: true, grid: { color: G }, title: { display: true, text: 'Spending ($)', color: '#94a3b8', font: { size: 12 } }, ticks: { callback: dollarTick } },
+        x: { grid: { color: 'rgba(30,41,59,0.5)' }, title: { display: true, text: document.getElementById('scurve-period-label').value || 'Period', color: '#94a3b8', font: { size: 12 } } }
+      }
+    }
+  }));
+
+  // ── 2. CPI Trend ──
+  dc('sc-cpi');
+  sc('sc-cpi', new Chart(document.getElementById('chart-cpi-trend'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'CPI', data: cpiArr, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: cpiArr.map(v => v >= 1 ? '#22c55e' : '#ef4444'), borderWidth: 2 },
+        { label: 'Target (1.0)', data: Array(cpiArr.length).fill(1), borderColor: '#22c55e', borderWidth: 1, borderDash: [6,4], pointRadius: 0, fill: false },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 10 } } },
+      scales: { y: { grid: { color: G }, title: { display: true, text: 'CPI', color: '#94a3b8' } }, x: { grid: { color: G } } }
+    }
+  }));
+
+  // ── 3. SPI Trend ──
+  dc('sc-spi');
+  sc('sc-spi', new Chart(document.getElementById('chart-spi-trend'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'SPI', data: spiArr, borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.1)', fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: spiArr.map(v => v >= 1 ? '#22c55e' : '#ef4444'), borderWidth: 2 },
+        { label: 'Target (1.0)', data: Array(spiArr.length).fill(1), borderColor: '#22c55e', borderWidth: 1, borderDash: [6,4], pointRadius: 0, fill: false },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 10 } } },
+      scales: { y: { grid: { color: G }, title: { display: true, text: 'SPI', color: '#94a3b8' } }, x: { grid: { color: G } } }
+    }
+  }));
+
+  // ── 4. CV Trend ──
+  dc('sc-cv');
+  sc('sc-cv', new Chart(document.getElementById('chart-cv-trend'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Cost Variance (CV)',
+        data: cvArr,
+        backgroundColor: cvArr.map(v => v >= 0 ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)'),
+        borderRadius: 4, borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: dollarTip } } },
+      scales: { y: { grid: { color: G }, ticks: { callback: dollarTick } }, x: { grid: { display: false }, ticks: { font: { size: 9 } } } }
+    }
+  }));
+
+  // ── 5. SV Trend ──
+  dc('sc-sv');
+  sc('sc-sv', new Chart(document.getElementById('chart-sv-trend'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Schedule Variance (SV)',
+        data: svArr,
+        backgroundColor: svArr.map(v => v >= 0 ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)'),
+        borderRadius: 4, borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: dollarTip } } },
+      scales: { y: { grid: { color: G }, ticks: { callback: dollarTick } }, x: { grid: { display: false }, ticks: { font: { size: 9 } } } }
+    }
+  }));
+
+  // ── 6. Incremental Spend per Period ──
+  dc('sc-inc');
+  sc('sc-inc', new Chart(document.getElementById('chart-incremental'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'PV (incremental)', data: incPV, backgroundColor: 'rgba(30,41,59,0.8)', borderRadius: 3 },
+        { label: 'EV (incremental)', data: incEV, backgroundColor: 'rgba(34,197,94,0.6)', borderRadius: 3 },
+        { label: 'AC (incremental)', data: incAC, backgroundColor: 'rgba(239,68,68,0.6)', borderRadius: 3 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 10, font: { size: 10 } } }, tooltip: { callbacks: { label: dollarTip } } },
+      scales: { y: { beginAtZero: true, grid: { color: G }, ticks: { callback: dollarTick } }, x: { grid: { display: false }, ticks: { font: { size: 9 } } } }
+    }
+  }));
+
+  // ── 7. % Complete vs % Spent ──
+  dc('sc-pct');
+  sc('sc-pct', new Chart(document.getElementById('chart-pct-trend'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: '% Complete (EV/BAC)', data: pctComplete, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', fill: true, tension: 0.3, pointRadius: 4, borderWidth: 2 },
+        { label: '% Spent (AC/BAC)', data: pctSpent, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', fill: true, tension: 0.3, pointRadius: 4, borderWidth: 2 },
+        { label: '100% Target', data: Array(pctComplete.length).fill(100), borderColor: '#3b82f6', borderWidth: 1, borderDash: [6,4], pointRadius: 0, fill: false },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 10 } }, tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.raw.toFixed(1) + '%' } } },
+      scales: { y: { min: 0, grid: { color: G }, title: { display: true, text: '%', color: '#94a3b8' }, ticks: { callback: v => v + '%' } }, x: { grid: { color: G } } }
+    }
+  }));
+
+  // ── 8. EAC Forecast Trend ──
+  dc('sc-eac');
+  sc('sc-eac', new Chart(document.getElementById('chart-eac-trend'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'EAC (BAC/CPI)', data: eacArr, borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.1)', fill: true, tension: 0.3, pointRadius: 4, borderWidth: 2 },
+        { label: 'BAC', data: Array(eacArr.length).fill(bacVal), borderColor: '#3b82f6', borderWidth: 2, borderDash: [8,4], pointRadius: 0, fill: false },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 10 } }, tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': $' + Number(ctx.raw).toLocaleString(undefined, {maximumFractionDigits:0}) } } },
+      scales: { y: { grid: { color: G }, ticks: { callback: dollarTick } }, x: { grid: { color: G } } }
+    }
+  }));
+
+  // ── 9. CPI vs SPI Combined ──
+  dc('sc-cpispicomb');
+  sc('sc-cpispicomb', new Chart(document.getElementById('chart-cpi-spi-combined'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'CPI', data: cpiArr, borderColor: '#3b82f6', pointBackgroundColor: '#3b82f6', tension: 0.3, pointRadius: 4, borderWidth: 2, fill: false },
+        { label: 'SPI', data: spiArr, borderColor: '#a78bfa', pointBackgroundColor: '#a78bfa', tension: 0.3, pointRadius: 4, borderWidth: 2, fill: false },
+        { label: 'Ideal (1.0)', data: Array(cpiArr.length).fill(1), borderColor: '#22c55e', borderWidth: 1, borderDash: [6,4], pointRadius: 0, fill: false },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'bottom', labels: { usePointStyle: true, padding: 10 } },
+        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + (typeof ctx.raw === 'number' ? ctx.raw.toFixed(4) : ctx.raw) } }
+      },
+      scales: { y: { grid: { color: G }, title: { display: true, text: 'Index Value', color: '#94a3b8' } }, x: { grid: { color: G } } }
+    }
+  }));
+
+  // ── Summary table ──
+  const thead = document.querySelector('#scurve-summary-table thead tr');
+  thead.innerHTML = '<th style="text-align:left">Metric</th>' + labels.map(l => `<th>${l}</th>`).join('');
+  const tbody = document.querySelector('#scurve-summary-table tbody');
+  const fmtD = v => '$' + Number(v).toLocaleString(undefined, {maximumFractionDigits:0});
+  const fmtI = v => v.toFixed(4);
+  const colorVal = (v, good) => {
+    const cls = good ? 'color:var(--green)' : 'color:var(--red)';
+    return `<span style="${cls}">${typeof v === 'string' ? v : v}</span>`;
+  };
+  tbody.innerHTML = [
+    ['PV', pvArr.map(fmtD)],
+    ['EV', evArr.map(fmtD)],
+    ['AC', acArr.map(fmtD)],
+    ['CV', cvArr.map((v,i) => colorVal(fmtD(v), v >= 0))],
+    ['SV', svArr.map((v,i) => colorVal(fmtD(v), v >= 0))],
+    ['CPI', cpiArr.map((v,i) => colorVal(fmtI(v), v >= 1))],
+    ['SPI', spiArr.map((v,i) => colorVal(fmtI(v), v >= 1))],
+    ['EAC', eacArr.map((v,i) => colorVal(fmtD(v), v <= bacVal))],
+    ['% Done', pctComplete.map(v => v.toFixed(1) + '%')],
+    ['% Spent', pctSpent.map(v => v.toFixed(1) + '%')],
+  ].map(([label, vals]) => `<tr><td class="row-label" style="text-align:left;padding-left:8px;">${label}</td>${vals.map(v => `<td style="text-align:center">${v}</td>`).join('')}</tr>`).join('');
+}
+
+// Initialize with 6 period columns
+for (let i = 0; i < 6; i++) addPeriodColumn();
+
+// Init with 3 empty rows
+addTaskRow(); addTaskRow(); addTaskRow();
+</script>
+</body>
+</html>
