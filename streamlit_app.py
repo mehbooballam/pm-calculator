@@ -717,7 +717,7 @@ with tab_cp:
             height=max(300, len(tasks) * 40 + 80),
             barmode="overlay",
             xaxis=dict(title="Time (units)", gridcolor="#1e293b", zerolinecolor="#334155"),
-            yaxis=dict(gridcolor="transparent", zerolinecolor="#334155"),
+            yaxis=dict(gridcolor="rgba(0,0,0,0)", zerolinecolor="#334155"),
             legend=dict(orientation="h", y=1.05, x=0.5, xanchor="center", bgcolor="rgba(0,0,0,0)", font=dict(size=11)),
         )
         st.plotly_chart(fig, use_container_width=True)
