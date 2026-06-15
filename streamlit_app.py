@@ -287,6 +287,7 @@ def calc_critical_path(tasks):
         results.append(dict(
             id=tid, name=task_map[tid].get("name", tid),
             duration=task_map[tid]["duration"],
+            predecessors=task_map[tid].get("predecessors", []),
             es=es[tid], ef=ef[tid], ls=ls[tid], lf=lf[tid],
             total_float=round(tf, 2), critical=crit,
         ))
@@ -1359,6 +1360,161 @@ with tab_cp:
             </div>
         </div>
         """, unsafe_allow_html=True)
+
+        # ── Network Diagram (AON) ──
+        st.markdown("### Network Diagram (Activity on Node)")
+
+        task_map_nd = {t["id"]: t for t in tasks}
+        successors_nd = defaultdict(list)
+        for t in tasks:
+            for p in t.get("predecessors", []):
+                successors_nd[p].append(t["id"])
+
+        # Assign layers (depth) based on longest path from start
+        depth = {}
+        for t in tasks:
+            if not t.get("predecessors", []):
+                depth[t["id"]] = 0
+        changed = True
+        while changed:
+            changed = False
+            for t in tasks:
+                if t["id"] in depth:
+                    continue
+                preds = t.get("predecessors", [])
+                if all(p in depth for p in preds):
+                    depth[t["id"]] = max(depth[p] for p in preds) + 1
+                    changed = True
+
+        max_depth = max(depth.values()) if depth else 0
+
+        # Group tasks by layer
+        layers = defaultdict(list)
+        for tid, d_val in depth.items():
+            layers[d_val].append(tid)
+        max_layer_size = max(len(v) for v in layers.values()) if layers else 1
+
+        # Node dimensions and spacing
+        box_w = 1.6
+        box_h = 1.2
+        h_gap = 2.5
+        v_gap = 1.8
+
+        # Calculate positions
+        positions = {}
+        for layer_idx in range(max_depth + 1):
+            layer_tasks = layers[layer_idx]
+            n_in_layer = len(layer_tasks)
+            for i, tid in enumerate(layer_tasks):
+                x = layer_idx * (box_w + h_gap)
+                y_offset = (max_layer_size - n_in_layer) * v_gap / 2
+                y = i * v_gap + y_offset
+                positions[tid] = (x, y)
+
+        fig_nd = go.Figure()
+
+        # Draw arrows first (so they appear behind nodes)
+        for t in tasks:
+            if t["id"] not in positions:
+                continue
+            for pred_id in t.get("predecessors", []):
+                if pred_id not in positions:
+                    continue
+                x0, y0 = positions[pred_id]
+                x1, y1 = positions[t["id"]]
+                src = task_map_nd[pred_id]
+                is_crit_edge = src["critical"] and t["critical"]
+                arrow_color = COLORS["red"] if is_crit_edge else "#475569"
+                arrow_width = 2.5 if is_crit_edge else 1.5
+                # Arrow from right edge of predecessor to left edge of successor
+                ax0 = x0 + box_w / 2
+                ay0 = y0
+                ax1 = x1 - box_w / 2
+                ay1 = y1
+                fig_nd.add_annotation(
+                    x=ax1, y=ay1, ax=ax0, ay=ay0,
+                    xref="x", yref="y", axref="x", ayref="y",
+                    showarrow=True, arrowhead=3, arrowsize=1.2,
+                    arrowwidth=arrow_width, arrowcolor=arrow_color,
+                )
+
+        # Draw nodes (rectangles with task info)
+        for t in tasks:
+            if t["id"] not in positions:
+                continue
+            cx, cy = positions[t["id"]]
+            is_crit = t["critical"]
+            border_color = COLORS["red"] if is_crit else COLORS["accent"]
+            fill_color = "rgba(239,68,68,0.12)" if is_crit else "rgba(59,130,246,0.08)"
+
+            # Box shape
+            x0 = cx - box_w / 2
+            x1 = cx + box_w / 2
+            y0 = cy - box_h / 2
+            y1 = cy + box_h / 2
+            fig_nd.add_shape(type="rect", x0=x0, y0=y0, x1=x1, y1=y1,
+                             fillcolor=fill_color, line=dict(color=border_color, width=2.5 if is_crit else 1.5))
+            # Horizontal divider lines
+            mid_y_top = cy + box_h / 6
+            mid_y_bot = cy - box_h / 6
+            fig_nd.add_shape(type="line", x0=x0, y0=mid_y_top, x1=x1, y1=mid_y_top,
+                             line=dict(color=border_color, width=0.8))
+            fig_nd.add_shape(type="line", x0=x0, y0=mid_y_bot, x1=x1, y1=mid_y_bot,
+                             line=dict(color=border_color, width=0.8))
+            # Vertical dividers for top and bottom rows
+            fig_nd.add_shape(type="line", x0=cx - box_w / 6, y0=mid_y_top, x1=cx - box_w / 6, y1=y1,
+                             line=dict(color=border_color, width=0.8))
+            fig_nd.add_shape(type="line", x0=cx + box_w / 6, y0=mid_y_top, x1=cx + box_w / 6, y1=y1,
+                             line=dict(color=border_color, width=0.8))
+            fig_nd.add_shape(type="line", x0=cx - box_w / 6, y0=y0, x1=cx - box_w / 6, y1=mid_y_bot,
+                             line=dict(color=border_color, width=0.8))
+            fig_nd.add_shape(type="line", x0=cx + box_w / 6, y0=y0, x1=cx + box_w / 6, y1=mid_y_bot,
+                             line=dict(color=border_color, width=0.8))
+
+            txt_color = "#f1f5f9"
+            lbl_color = "#64748b"
+            # Top row: ES | Task ID | EF
+            fig_nd.add_annotation(x=cx - box_w / 3, y=(mid_y_top + y1) / 2 + 0.02, text=f"<b>{t['es']}</b>",
+                                  showarrow=False, font=dict(size=10, color=txt_color))
+            fig_nd.add_annotation(x=cx, y=(mid_y_top + y1) / 2 + 0.02, text=f"<b>{t['id']}</b>",
+                                  showarrow=False, font=dict(size=11, color=COLORS["red"] if is_crit else COLORS["accent"]))
+            fig_nd.add_annotation(x=cx + box_w / 3, y=(mid_y_top + y1) / 2 + 0.02, text=f"<b>{t['ef']}</b>",
+                                  showarrow=False, font=dict(size=10, color=txt_color))
+
+            # Middle row: Task name | Duration
+            fig_nd.add_annotation(x=cx, y=cy, text=f"{t['name']}<br><span style='font-size:9px;color:#94a3b8'>Dur: {t['duration']}</span>",
+                                  showarrow=False, font=dict(size=9, color="#cbd5e1"), align="center")
+
+            # Bottom row: LS | TF | LF
+            fig_nd.add_annotation(x=cx - box_w / 3, y=(y0 + mid_y_bot) / 2 - 0.02, text=f"<b>{t['ls']}</b>",
+                                  showarrow=False, font=dict(size=10, color=txt_color))
+            fig_nd.add_annotation(x=cx, y=(y0 + mid_y_bot) / 2 - 0.02, text=f"<b>{t['total_float']}</b>",
+                                  showarrow=False, font=dict(size=10, color=COLORS["red"] if is_crit else COLORS["yellow"]))
+            fig_nd.add_annotation(x=cx + box_w / 3, y=(y0 + mid_y_bot) / 2 - 0.02, text=f"<b>{t['lf']}</b>",
+                                  showarrow=False, font=dict(size=10, color=txt_color))
+
+        # Layout labels legend
+        all_x = [p[0] for p in positions.values()]
+        all_y = [p[1] for p in positions.values()]
+        x_pad = box_w
+        y_pad = box_h
+        fig_nd.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#0f172a",
+            font=dict(color="#94a3b8", family="Segoe UI, system-ui, sans-serif"),
+            margin=dict(l=20, r=20, t=60, b=60),
+            height=max(400, max_layer_size * 120 + 150),
+            xaxis=dict(visible=False, range=[min(all_x) - x_pad, max(all_x) + x_pad]),
+            yaxis=dict(visible=False, range=[min(all_y) - y_pad, max(all_y) + y_pad], scaleanchor="x"),
+            showlegend=False,
+        )
+        # Add legend annotation at top
+        fig_nd.add_annotation(
+            x=0.5, y=1.02, xref="paper", yref="paper",
+            text="<b>ES</b> | <b>ID</b> | <b>EF</b>  ·  Name / Dur  ·  <b>LS</b> | <b>TF</b> | <b>LF</b>    "
+                 "<span style='color:#ef4444'>■ Critical</span>  <span style='color:#3b82f6'>■ Non-Critical</span>",
+            showarrow=False, font=dict(size=11, color="#94a3b8"),
+        )
+        st.plotly_chart(fig_nd, use_container_width=True)
 
         # ── Gantt Chart ──
         st.markdown("### Gantt Chart")

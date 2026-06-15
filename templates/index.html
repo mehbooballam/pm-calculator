@@ -683,6 +683,16 @@
         <div class="cp-banner" id="cp-banner"></div>
       </div>
       <div class="card">
+        <h2>Network Diagram (Activity on Node)</h2>
+        <p style="font-size:0.8rem;color:var(--muted);margin-bottom:8px;">
+          <b>ES</b> | <b>ID</b> | <b>EF</b> &nbsp;·&nbsp; Name / Duration &nbsp;·&nbsp; <b>LS</b> | <b>TF</b> | <b>LF</b>
+          &nbsp;&nbsp; <span style="color:var(--red);">■ Critical</span> &nbsp; <span style="color:var(--accent);">■ Non-Critical</span>
+        </p>
+        <div class="gantt-container" style="overflow:auto;">
+          <canvas id="chart-network"></canvas>
+        </div>
+      </div>
+      <div class="card">
         <h2>Gantt Chart</h2>
         <div class="gantt-container">
           <canvas id="chart-gantt"></canvas>
@@ -2033,7 +2043,179 @@ function renderCP(d) {
       <td><span class="tag ${t.critical ? 'tag-crit' : 'tag-ok'}">${t.critical ? 'Critical' : 'Float: ' + t.total_float}</span></td>
     </tr>`).join('');
 
+  renderNetworkDiagram(d);
   renderAllCPCharts(d);
+}
+
+function renderNetworkDiagram(d) {
+  const tasks = d.tasks;
+  const taskMap = {};
+  tasks.forEach(t => taskMap[t.id] = t);
+
+  // Build successor map
+  const successors = {};
+  tasks.forEach(t => { successors[t.id] = []; });
+  tasks.forEach(t => {
+    (t.predecessors || []).forEach(p => {
+      if (successors[p]) successors[p].push(t.id);
+    });
+  });
+
+  // Assign layers (depth) by longest path from start
+  const depth = {};
+  tasks.forEach(t => {
+    if (!t.predecessors || t.predecessors.length === 0) depth[t.id] = 0;
+  });
+  let changed = true;
+  while (changed) {
+    changed = false;
+    tasks.forEach(t => {
+      if (depth[t.id] !== undefined) return;
+      const preds = t.predecessors || [];
+      if (preds.every(p => depth[p] !== undefined)) {
+        depth[t.id] = Math.max(...preds.map(p => depth[p])) + 1;
+        changed = true;
+      }
+    });
+  }
+
+  const maxDepth = Math.max(...Object.values(depth), 0);
+  const layers = {};
+  for (let i = 0; i <= maxDepth; i++) layers[i] = [];
+  Object.entries(depth).forEach(([tid, d]) => layers[d].push(tid));
+  const maxLayerSize = Math.max(...Object.values(layers).map(l => l.length), 1);
+
+  // Dimensions
+  const boxW = 140, boxH = 80;
+  const hGap = 70, vGap = 40;
+  const padX = 60, padY = 50;
+
+  // Positions
+  const positions = {};
+  for (let layer = 0; layer <= maxDepth; layer++) {
+    const lt = layers[layer];
+    const nInLayer = lt.length;
+    lt.forEach((tid, i) => {
+      const x = padX + layer * (boxW + hGap);
+      const yOff = (maxLayerSize - nInLayer) * (boxH + vGap) / 2;
+      const y = padY + i * (boxH + vGap) + yOff;
+      positions[tid] = { x, y };
+    });
+  }
+
+  const canvasW = padX * 2 + (maxDepth + 1) * boxW + maxDepth * hGap;
+  const canvasH = padY * 2 + maxLayerSize * boxH + (maxLayerSize - 1) * vGap;
+
+  const canvas = document.getElementById('chart-network');
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = canvasW * dpr;
+  canvas.height = canvasH * dpr;
+  canvas.style.width = canvasW + 'px';
+  canvas.style.height = canvasH + 'px';
+  canvas.style.minWidth = canvasW + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, canvasW, canvasH);
+
+  // Draw arrows
+  tasks.forEach(t => {
+    (t.predecessors || []).forEach(predId => {
+      if (!positions[predId] || !positions[t.id]) return;
+      const src = positions[predId];
+      const dst = positions[t.id];
+      const isCritEdge = taskMap[predId].critical && t.critical;
+      ctx.beginPath();
+      ctx.strokeStyle = isCritEdge ? '#ef4444' : '#475569';
+      ctx.lineWidth = isCritEdge ? 2.5 : 1.5;
+      const x0 = src.x + boxW, y0 = src.y + boxH / 2;
+      const x1 = dst.x, y1 = dst.y + boxH / 2;
+      ctx.moveTo(x0, y0);
+      // Bezier curve for smoother arrows
+      const cpx = (x0 + x1) / 2;
+      ctx.bezierCurveTo(cpx, y0, cpx, y1, x1, y1);
+      ctx.stroke();
+      // Arrowhead
+      const angle = Math.atan2(y1 - (y0+y1)/2, x1 - cpx);
+      const hl = 10;
+      ctx.beginPath();
+      ctx.fillStyle = isCritEdge ? '#ef4444' : '#475569';
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x1 - hl * Math.cos(angle - 0.4), y1 - hl * Math.sin(angle - 0.4));
+      ctx.lineTo(x1 - hl * Math.cos(angle + 0.4), y1 - hl * Math.sin(angle + 0.4));
+      ctx.closePath();
+      ctx.fill();
+    });
+  });
+
+  // Draw nodes
+  tasks.forEach(t => {
+    if (!positions[t.id]) return;
+    const { x, y } = positions[t.id];
+    const isCrit = t.critical;
+    const borderColor = isCrit ? '#ef4444' : '#3b82f6';
+    const fillColor = isCrit ? 'rgba(239,68,68,0.08)' : 'rgba(59,130,246,0.06)';
+
+    // Box
+    ctx.fillStyle = fillColor;
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = isCrit ? 2.5 : 1.5;
+    ctx.beginPath();
+    ctx.roundRect(x, y, boxW, boxH, 4);
+    ctx.fill();
+    ctx.stroke();
+
+    // Horizontal dividers (3 rows)
+    const rowH = boxH / 3;
+    ctx.beginPath();
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 0.7;
+    ctx.moveTo(x, y + rowH); ctx.lineTo(x + boxW, y + rowH);
+    ctx.moveTo(x, y + rowH * 2); ctx.lineTo(x + boxW, y + rowH * 2);
+    ctx.stroke();
+
+    // Vertical dividers for top & bottom rows (3 columns)
+    const colW = boxW / 3;
+    ctx.beginPath();
+    ctx.moveTo(x + colW, y); ctx.lineTo(x + colW, y + rowH);
+    ctx.moveTo(x + colW * 2, y); ctx.lineTo(x + colW * 2, y + rowH);
+    ctx.moveTo(x + colW, y + rowH * 2); ctx.lineTo(x + colW, y + rowH * 2 + rowH);
+    ctx.moveTo(x + colW * 2, y + rowH * 2); ctx.lineTo(x + colW * 2, y + rowH * 2 + rowH);
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Top row: ES | ID | EF
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText(t.es, x + colW / 2, y + rowH / 2);
+    ctx.fillStyle = borderColor;
+    ctx.font = 'bold 13px sans-serif';
+    ctx.fillText(t.id, x + colW + colW / 2, y + rowH / 2);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText(t.ef, x + colW * 2 + colW / 2, y + rowH / 2);
+
+    // Middle row: Name / Duration
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '10px sans-serif';
+    const nameStr = t.name.length > 16 ? t.name.substring(0, 15) + '…' : t.name;
+    ctx.fillText(nameStr, x + boxW / 2, y + rowH + rowH / 2 - 5);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '9px sans-serif';
+    ctx.fillText('Dur: ' + t.duration, x + boxW / 2, y + rowH + rowH / 2 + 8);
+
+    // Bottom row: LS | TF | LF
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText(t.ls, x + colW / 2, y + rowH * 2 + rowH / 2);
+    ctx.fillStyle = isCrit ? '#ef4444' : '#eab308';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText(t.total_float, x + colW + colW / 2, y + rowH * 2 + rowH / 2);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText(t.lf, x + colW * 2 + colW / 2, y + rowH * 2 + rowH / 2);
+  });
 }
 
 function renderAllCPCharts(d) {

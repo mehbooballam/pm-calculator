@@ -325,6 +325,7 @@ def calculate_critical_path():
             "id": tid,
             "name": task_map[tid]["name"],
             "duration": task_map[tid]["duration"],
+            "predecessors": task_map[tid].get("predecessors", []),
             "es": round(es[tid], 2),
             "ef": round(ef[tid], 2),
             "ls": round(ls[tid], 2),
