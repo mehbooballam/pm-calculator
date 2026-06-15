@@ -71,6 +71,57 @@ def calculate_evm():
     })
 
 
+@app.route("/api/emv", methods=["POST"])
+def calculate_emv():
+    """Calculate Expected Monetary Value for project risks."""
+    data = request.json
+    risks = data.get("risks", [])
+
+    if not risks:
+        return jsonify({"error": "Provide at least one risk item."}), 400
+
+    items = []
+    total_emv = 0
+    total_threats = 0
+    total_opportunities = 0
+
+    for r in risks:
+        try:
+            name = r["name"]
+            probability = float(r["probability"])
+            impact = float(r["impact"])
+        except (KeyError, ValueError, TypeError):
+            return jsonify({"error": "Each risk must have name, probability (0-1), and impact."}), 400
+
+        if probability < 0 or probability > 1:
+            return jsonify({"error": f"Probability for '{name}' must be between 0 and 1."}), 400
+
+        emv = probability * impact
+        total_emv += emv
+        if impact < 0:
+            total_threats += emv
+        else:
+            total_opportunities += emv
+
+        items.append({
+            "name": name,
+            "type": r.get("type", "Threat"),
+            "probability": round(probability, 4),
+            "impact": round(impact, 2),
+            "emv": round(emv, 2),
+        })
+
+    return jsonify({
+        "items": items,
+        "total_emv": round(total_emv, 2),
+        "total_threats": round(total_threats, 2),
+        "total_opportunities": round(total_opportunities, 2),
+        "risk_count": len(items),
+        "threat_count": sum(1 for i in items if i["impact"] < 0),
+        "opportunity_count": sum(1 for i in items if i["impact"] >= 0),
+    })
+
+
 @app.route("/api/critical-path", methods=["POST"])
 def calculate_critical_path():
     """Calculate critical path using forward/backward pass."""

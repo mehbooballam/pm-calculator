@@ -8,7 +8,7 @@ import math
 
 # ─────────────────── PAGE CONFIG ───────────────────
 st.set_page_config(
-    page_title="PM Calculator — EVM & Critical Path",
+    page_title="PM Calculator — EVM, EMV & Critical Path",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -93,6 +93,32 @@ def calc_evm(bac, pv, ev, ac):
     )
 
 
+# ─────────────────── EMV CALCULATION ───────────────────
+def calc_emv(risks):
+    items = []
+    total_emv = 0
+    total_threats = 0
+    total_opportunities = 0
+    for r in risks:
+        emv = r["probability"] * r["impact"]
+        total_emv += emv
+        if r["impact"] < 0:
+            total_threats += emv
+        else:
+            total_opportunities += emv
+        items.append(dict(
+            name=r["name"], type=r.get("type", "Threat"),
+            probability=r["probability"], impact=r["impact"], emv=emv,
+        ))
+    return dict(
+        items=items, total_emv=total_emv,
+        total_threats=total_threats, total_opportunities=total_opportunities,
+        risk_count=len(items),
+        threat_count=sum(1 for i in items if i["impact"] < 0),
+        opportunity_count=sum(1 for i in items if i["impact"] >= 0),
+    )
+
+
 # ─────────────────── CRITICAL PATH ───────────────────
 def calc_critical_path(tasks):
     task_map = {t["id"]: t for t in tasks}
@@ -152,11 +178,11 @@ def calc_critical_path(tasks):
 
 # ─────────────────── HEADER ───────────────────
 st.markdown("<h1 style='text-align:center;'>📊 Project Management Calculator</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align:center;color:#94a3b8;margin-top:-10px;'>Earned Value Management &bull; S-Curve Tracker &bull; Critical Path Analysis</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center;color:#94a3b8;margin-top:-10px;'>Earned Value Management &bull; EMV Risk Analysis &bull; S-Curve Tracker &bull; Critical Path Analysis</p>", unsafe_allow_html=True)
 st.markdown("---")
 
 # ─────────────────── TABS ───────────────────
-tab_evm, tab_scurve, tab_cp, tab_ref = st.tabs(["📈 EVM Metrics", "📉 S-Curve Tracker", "🔀 Critical Path", "📖 Formulas"])
+tab_evm, tab_emv, tab_scurve, tab_cp, tab_ref = st.tabs(["📈 EVM Metrics", "🎯 EMV Calculator", "📉 S-Curve Tracker", "🔀 Critical Path", "📖 Formulas"])
 
 # ═══════════════════════════════════════════════════════
 #                     EVM TAB
@@ -430,6 +456,232 @@ with tab_evm:
                 interps.append(f'✅ **VAC = ${d["vac"]:,.0f}** — Expected to finish **under budget** by this amount.')
             else:
                 interps.append(f'❌ **VAC = ${d["vac"]:,.0f}** — Expected to **overrun budget** by ${abs(d["vac"]):,.0f}.')
+        for line in interps:
+            st.markdown(line)
+
+
+# ═══════════════════════════════════════════════════════
+#                    EMV TAB
+# ═══════════════════════════════════════════════════════
+with tab_emv:
+    st.subheader("Expected Monetary Value (EMV) Calculator")
+    st.caption("Quantify project risk by calculating EMV for threats (negative impact) and opportunities (positive impact). EMV = Probability × Impact.")
+
+    if st.button("Load Sample Risks"):
+        st.session_state["emv_risks"] = pd.DataFrame([
+            {"Name": "Server outage", "Type": "Threat", "Probability (%)": 30, "Impact ($)": -50000},
+            {"Name": "Key resource leaves", "Type": "Threat", "Probability (%)": 20, "Impact ($)": -80000},
+            {"Name": "Vendor delay", "Type": "Threat", "Probability (%)": 40, "Impact ($)": -30000},
+            {"Name": "Scope creep", "Type": "Threat", "Probability (%)": 50, "Impact ($)": -40000},
+            {"Name": "Early delivery bonus", "Type": "Opportunity", "Probability (%)": 25, "Impact ($)": 60000},
+            {"Name": "Reuse existing module", "Type": "Opportunity", "Probability (%)": 60, "Impact ($)": 35000},
+            {"Name": "Favorable exchange rate", "Type": "Opportunity", "Probability (%)": 15, "Impact ($)": 20000},
+        ])
+
+    default_emv = st.session_state.get("emv_risks", pd.DataFrame([
+        {"Name": "", "Type": "Threat", "Probability (%)": 0, "Impact ($)": 0},
+        {"Name": "", "Type": "Threat", "Probability (%)": 0, "Impact ($)": 0},
+        {"Name": "", "Type": "Threat", "Probability (%)": 0, "Impact ($)": 0},
+    ]))
+
+    emv_df = st.data_editor(
+        default_emv, num_rows="dynamic", use_container_width=True, key="emv_editor",
+        column_config={
+            "Type": st.column_config.SelectboxColumn("Type", options=["Threat", "Opportunity"], required=True),
+            "Probability (%)": st.column_config.NumberColumn("Probability (%)", min_value=0, max_value=100, step=1),
+            "Impact ($)": st.column_config.NumberColumn("Impact ($)", step=1000),
+        },
+    )
+
+    if st.button("Calculate EMV", type="primary", use_container_width=True):
+        risks = []
+        for _, row in emv_df.iterrows():
+            name = str(row["Name"]).strip()
+            if name and row["Probability (%)"] != 0 and row["Impact ($)"] != 0:
+                prob = float(row["Probability (%)"]) / 100
+                impact = float(row["Impact ($)"])
+                if row["Type"] == "Threat" and impact > 0:
+                    impact = -impact
+                risks.append(dict(name=name, type=row["Type"], probability=prob, impact=impact))
+        if risks:
+            st.session_state["emv_result"] = calc_emv(risks)
+        else:
+            st.error("Add at least one risk with a name, probability, and impact.")
+
+    if "emv_result" in st.session_state:
+        r = st.session_state["emv_result"]
+        items = r["items"]
+
+        st.markdown("---")
+
+        # Summary metrics
+        st.markdown("### Summary")
+        m1, m2, m3, m4 = st.columns(4)
+        total_color = "normal" if r["total_emv"] >= 0 else "inverse"
+        m1.metric("Total EMV", f'${r["total_emv"]:,.0f}',
+                  delta="Net Positive" if r["total_emv"] >= 0 else "Net Negative",
+                  delta_color=total_color)
+        m2.metric("Total Threats EMV", f'${r["total_threats"]:,.0f}')
+        m3.metric("Total Opportunities EMV", f'${r["total_opportunities"]:,.0f}')
+        m4.metric("Risk Items", f'{r["risk_count"]} ({r["threat_count"]}T / {r["opportunity_count"]}O)')
+
+        # Contingency Reserve recommendation
+        contingency = abs(r["total_threats"])
+        st.markdown(f"""
+        <div style="background: linear-gradient(135deg, rgba(59,130,246,0.12), rgba(59,130,246,0.04));
+                    border: 1px solid rgba(59,130,246,0.3); border-radius: 10px; padding: 20px; margin: 16px 0;">
+            <div style="color: #94a3b8; font-size: 0.85rem;">Recommended Contingency Reserve (based on threat EMV)</div>
+            <div style="font-size: 1.3rem; font-weight: 700; color: #3b82f6; margin-top: 6px;">
+                ${contingency:,.0f}
+            </div>
+            <div style="color: #94a3b8; font-size: 0.85rem; margin-top: 4px;">
+                Net project risk exposure (threats + opportunities): <strong style="color:#f1f5f9;">${r['total_emv']:,.0f}</strong>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Charts
+        st.markdown("### 📊 Visual Analysis")
+
+        # Row 1: EMV by risk item + Threat vs Opportunity pie
+        c1, c2 = st.columns(2)
+        with c1:
+            names = [i["name"] for i in items]
+            emvs = [i["emv"] for i in items]
+            colors = [COLORS["red"] if i["emv"] < 0 else COLORS["green"] for i in items]
+            fig = go.Figure(go.Bar(
+                y=names, x=emvs, orientation="h", marker_color=colors,
+                text=[f'${v:,.0f}' for v in emvs], textposition="outside",
+                textfont=dict(color="#f1f5f9", size=11),
+            ))
+            fig.add_vline(x=0, line_dash="dash", line_color="#f1f5f9", line_width=1)
+            fig.update_layout(**pl(title="EMV by Risk Item", xaxis=dict(title="EMV ($)"),
+                                   height=max(300, len(items) * 45 + 80)))
+            st.plotly_chart(fig, use_container_width=True)
+
+        with c2:
+            threat_abs = abs(r["total_threats"])
+            opp_abs = abs(r["total_opportunities"])
+            fig = go.Figure(go.Pie(
+                values=[threat_abs, opp_abs],
+                labels=[f"Threats (${threat_abs:,.0f})", f"Opportunities (${opp_abs:,.0f})"],
+                hole=0.6, marker_colors=[COLORS["red"], COLORS["green"]],
+                textinfo="percent+label", textfont=dict(size=11),
+            ))
+            fig.add_annotation(text=f'${r["total_emv"]:,.0f}', x=0.5, y=0.55, font_size=22,
+                               font_color=COLORS["green"] if r["total_emv"] >= 0 else COLORS["red"],
+                               showarrow=False, font_family="Segoe UI")
+            fig.add_annotation(text="Net EMV", x=0.5, y=0.4, font_size=12,
+                               font_color="#94a3b8", showarrow=False)
+            fig.update_layout(**pl(title="Threats vs Opportunities", showlegend=True,
+                                   legend=dict(orientation="h", y=-0.1, x=0.5, xanchor="center")))
+            st.plotly_chart(fig, use_container_width=True)
+
+        # Row 2: Probability vs Impact scatter + Waterfall
+        c1, c2 = st.columns(2)
+        with c1:
+            fig = go.Figure()
+            for item in items:
+                color = COLORS["red"] if item["emv"] < 0 else COLORS["green"]
+                fig.add_trace(go.Scatter(
+                    x=[item["impact"]], y=[item["probability"] * 100],
+                    mode="markers+text", text=[item["name"]], textposition="top center",
+                    textfont=dict(size=10, color="#94a3b8"),
+                    marker=dict(size=max(12, abs(item["emv"]) / max(abs(i["emv"]) for i in items) * 40),
+                                color=color, opacity=0.7, line=dict(width=1, color="#f1f5f9")),
+                    showlegend=False,
+                    hovertemplate=f'<b>{item["name"]}</b><br>Probability: {item["probability"]*100:.0f}%<br>Impact: ${item["impact"]:,.0f}<br>EMV: ${item["emv"]:,.0f}<extra></extra>',
+                ))
+            fig.add_vline(x=0, line_dash="dash", line_color="#475569", line_width=1)
+            fig.update_layout(**pl(title="Probability vs Impact (bubble size = |EMV|)",
+                                   xaxis=dict(title="Impact ($)"), yaxis=dict(title="Probability (%)", range=[0, 105])))
+            st.plotly_chart(fig, use_container_width=True)
+
+        with c2:
+            sorted_items = sorted(items, key=lambda x: x["emv"])
+            wf_names = [i["name"] for i in sorted_items] + ["Net EMV"]
+            wf_vals = [i["emv"] for i in sorted_items]
+            cumulative = 0
+            wf_base = []
+            wf_bar = []
+            for v in wf_vals:
+                if v < 0:
+                    wf_base.append(cumulative + v)
+                    wf_bar.append(abs(v))
+                else:
+                    wf_base.append(cumulative)
+                    wf_bar.append(v)
+                cumulative += v
+            wf_base.append(0)
+            wf_bar.append(abs(cumulative))
+            wf_colors = [COLORS["red"] if v < 0 else COLORS["green"] for v in wf_vals]
+            wf_colors.append(COLORS["accent"])
+            fig = go.Figure(go.Bar(
+                x=wf_names, y=wf_bar, base=wf_base, marker_color=wf_colors,
+                text=[f'${v:,.0f}' for v in wf_vals] + [f'${cumulative:,.0f}'],
+                textposition="outside", textfont=dict(color="#f1f5f9", size=10),
+            ))
+            fig.update_layout(**pl(title="EMV Waterfall", yaxis=dict(title="EMV ($)")))
+            st.plotly_chart(fig, use_container_width=True)
+
+        # Row 3: Risk ranking + Cumulative EMV
+        c1, c2 = st.columns(2)
+        with c1:
+            sorted_abs = sorted(items, key=lambda x: abs(x["emv"]), reverse=True)
+            fig = go.Figure(go.Bar(
+                x=[i["name"] for i in sorted_abs],
+                y=[abs(i["emv"]) for i in sorted_abs],
+                marker_color=[COLORS["red"] if i["emv"] < 0 else COLORS["green"] for i in sorted_abs],
+                text=[f'${abs(i["emv"]):,.0f}' for i in sorted_abs],
+                textposition="outside", textfont=dict(color="#f1f5f9", size=10),
+            ))
+            fig.update_layout(**pl(title="Risk Ranking by |EMV|", yaxis=dict(title="|EMV| ($)"),
+                                   xaxis=dict(tickangle=30)))
+            st.plotly_chart(fig, use_container_width=True)
+
+        with c2:
+            sorted_emv = sorted(items, key=lambda x: x["emv"])
+            cum = 0
+            cum_vals = []
+            cum_labels = []
+            for i in sorted_emv:
+                cum += i["emv"]
+                cum_vals.append(cum)
+                cum_labels.append(i["name"])
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=cum_labels, y=cum_vals, mode="lines+markers",
+                line=dict(color=COLORS["accent"], width=2),
+                marker=dict(size=8, color=[COLORS["red"] if v < 0 else COLORS["green"] for v in cum_vals]),
+                fill="tozeroy", fillcolor="rgba(59,130,246,0.1)",
+            ))
+            fig.add_hline(y=0, line_dash="dash", line_color="#f1f5f9", line_width=1)
+            fig.update_layout(**pl(title="Cumulative EMV", yaxis=dict(title="Cumulative EMV ($)"),
+                                   xaxis=dict(tickangle=30)))
+            st.plotly_chart(fig, use_container_width=True)
+
+        # Risk detail table
+        st.markdown("### Risk Detail Table")
+        detail_df = pd.DataFrame(items)
+        detail_df["probability"] = detail_df["probability"].apply(lambda x: f"{x*100:.0f}%")
+        detail_df["impact"] = detail_df["impact"].apply(lambda x: f"${x:,.0f}")
+        detail_df["emv"] = detail_df["emv"].apply(lambda x: f"${x:,.0f}")
+        detail_df.columns = ["Risk", "Type", "Probability", "Impact", "EMV"]
+        st.dataframe(detail_df, use_container_width=True, hide_index=True)
+
+        # Interpretation
+        st.markdown("### 💡 Interpretation")
+        interps = []
+        if r["total_emv"] < 0:
+            interps.append(f'❌ **Net EMV = ${r["total_emv"]:,.0f}** — Overall risk exposure is **negative**. Budget should include a contingency reserve of at least **${contingency:,.0f}**.')
+        else:
+            interps.append(f'✅ **Net EMV = ${r["total_emv"]:,.0f}** — Opportunities outweigh threats. Still recommend a contingency reserve of **${contingency:,.0f}** for threat coverage.')
+        highest_risk = max(items, key=lambda x: abs(x["emv"]))
+        interps.append(f'⚠️ **Highest impact risk:** "{highest_risk["name"]}" with EMV of **${highest_risk["emv"]:,.0f}** (Probability: {highest_risk["probability"]*100:.0f}%, Impact: ${highest_risk["impact"]:,.0f}).')
+        if r["threat_count"] > 0:
+            interps.append(f'🔴 **{r["threat_count"]} threats** contributing **${r["total_threats"]:,.0f}** in expected losses.')
+        if r["opportunity_count"] > 0:
+            interps.append(f'🟢 **{r["opportunity_count"]} opportunities** contributing **${r["total_opportunities"]:,.0f}** in expected gains.')
         for line in interps:
             st.markdown(line)
 
@@ -835,6 +1087,20 @@ with tab_ref:
             st.code(formula, language=None)
 
     st.markdown("---")
+    st.subheader("Expected Monetary Value (EMV)")
+    formulas_emv = [
+        ("EMV (single risk)", "EMV = Probability × Impact"),
+        ("Total EMV", "Total EMV = Σ (P × I) for all risks"),
+        ("Contingency Reserve", "Reserve = |Σ EMV of threats|"),
+        ("Net Risk Exposure", "Net = Σ Threat EMV + Σ Opportunity EMV"),
+    ]
+    cols = st.columns(3)
+    for i, (name, formula) in enumerate(formulas_emv):
+        with cols[i % 3]:
+            st.markdown(f"**{name}**")
+            st.code(formula, language=None)
+
+    st.markdown("---")
     st.subheader("Critical Path Method (CPM)")
     formulas_cpm = [
         ("Early Start (ES)", "ES = max(EF of predecessors)"),
@@ -860,4 +1126,8 @@ with tab_ref:
     - **TCPI > 1.0** — Must improve efficiency to meet target
     - **TCPI < 1.0** — Can relax efficiency and still meet target
     - **Total Float = 0** — Task is on critical path; any delay extends the project
+    - **EMV < 0** — Threat (negative risk); expected loss
+    - **EMV > 0** — Opportunity (positive risk); expected gain
+    - **Total EMV < 0** — Net negative risk exposure; increase contingency reserve
+    - **Contingency Reserve** — Should cover the sum of threat EMVs
     """)

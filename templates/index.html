@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PM Calculator — EVM &amp; Critical Path</title>
+<title>PM Calculator — EVM, EMV &amp; Critical Path</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -141,11 +141,12 @@
 <div class="container">
   <header>
     <h1>Project Management Calculator</h1>
-    <p>Earned Value Management &amp; Critical Path Analysis</p>
+    <p>Earned Value Management &bull; EMV Risk Analysis &bull; Critical Path Analysis</p>
   </header>
 
-  <div class="tabs" style="max-width:560px;">
+  <div class="tabs" style="max-width:680px;">
     <button class="tab-btn active" onclick="switchTab('evm', this)">EVM Metrics</button>
+    <button class="tab-btn" onclick="switchTab('emv', this)">EMV Calculator</button>
     <button class="tab-btn" onclick="switchTab('scurve', this)">S-Curve Tracker</button>
     <button class="tab-btn" onclick="switchTab('cp', this)">Critical Path</button>
     <button class="tab-btn" onclick="switchTab('ref', this)">Formulas</button>
@@ -290,6 +291,93 @@
       <div class="card">
         <h2>Interpretation</h2>
         <div class="interpretation" id="interpretation"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== EMV CALCULATOR TAB ==================== -->
+  <div id="tab-emv" class="tab-content">
+    <div class="card">
+      <h2>Risk / Opportunity Definitions <span class="badge">EMV Analysis</span></h2>
+      <p style="font-size:0.85rem;color:var(--muted);margin-bottom:14px;">
+        Define risks (negative impact) and opportunities (positive impact) with their probability and monetary impact. EMV = Probability &times; Impact.
+      </p>
+      <div class="task-header" style="grid-template-columns: 1fr 120px 120px 140px 50px;">
+        <span>Risk / Opportunity Name</span>
+        <span>Type</span>
+        <span>Probability (%)</span>
+        <span>Impact ($)</span>
+        <span></span>
+      </div>
+      <div id="emv-list"></div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="addEMVRow()">+ Add Risk</button>
+        <button class="btn btn-secondary" onclick="loadSampleEMV()">Load Sample</button>
+        <button class="btn btn-primary" onclick="calculateEMV()">Calculate EMV</button>
+        <button class="btn btn-secondary" onclick="clearEMV()">Clear</button>
+      </div>
+      <div id="emv-error" class="error-msg"></div>
+    </div>
+
+    <div id="emv-results" style="display:none">
+      <div class="card">
+        <h2>EMV Summary</h2>
+        <div class="results-grid" id="emv-summary-grid"></div>
+        <div class="cp-banner" id="emv-reserve-banner" style="margin-top:16px;"></div>
+      </div>
+
+      <div class="card">
+        <h2>Visual Analysis — EMV Breakdown</h2>
+        <div class="charts-row">
+          <div class="chart-box">
+            <h3>EMV by Risk Item</h3>
+            <canvas id="chart-emv-items"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Threats vs Opportunities</h3>
+            <canvas id="chart-emv-pie"></canvas>
+          </div>
+        </div>
+        <div class="charts-row" style="margin-top:16px;">
+          <div class="chart-box">
+            <h3>Probability vs Impact (bubble = |EMV|)</h3>
+            <canvas id="chart-emv-bubble"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Risk Ranking by |EMV|</h3>
+            <canvas id="chart-emv-ranking"></canvas>
+          </div>
+        </div>
+        <div class="charts-row" style="margin-top:16px;">
+          <div class="chart-box">
+            <h3>EMV Waterfall</h3>
+            <canvas id="chart-emv-waterfall"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Cumulative EMV</h3>
+            <canvas id="chart-emv-cumulative"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Risk Detail Table</h2>
+        <div class="table-wrap">
+          <table id="emv-table">
+            <thead>
+              <tr>
+                <th>Risk</th><th>Type</th><th>Probability</th>
+                <th>Impact</th><th>EMV</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Interpretation</h2>
+        <div class="interpretation" id="emv-interpretation"></div>
       </div>
     </div>
   </div>
@@ -524,6 +612,15 @@
       </div>
     </div>
     <div class="card">
+      <h2>Expected Monetary Value (EMV)</h2>
+      <div class="formulas">
+        <div class="formula-item"><div class="fname">EMV (single risk)</div><div class="fdef">EMV = Probability &times; Impact</div></div>
+        <div class="formula-item"><div class="fname">Total EMV</div><div class="fdef">Total EMV = &Sigma; (P &times; I) for all risks</div></div>
+        <div class="formula-item"><div class="fname">Contingency Reserve</div><div class="fdef">Reserve = |&Sigma; EMV of threats|</div></div>
+        <div class="formula-item"><div class="fname">Net Risk Exposure</div><div class="fdef">Net = &Sigma; Threat EMV + &Sigma; Opp EMV</div></div>
+      </div>
+    </div>
+    <div class="card">
       <h2>Critical Path Method (CPM)</h2>
       <div class="formulas">
         <div class="formula-item"><div class="fname">Early Start (ES)</div><div class="fdef">ES = max(EF of predecessors)</div></div>
@@ -545,6 +642,10 @@
           <li><strong>TCPI &gt; 1.0</strong> &mdash; Must improve efficiency to meet target</li>
           <li><strong>TCPI &lt; 1.0</strong> &mdash; Can relax efficiency and still meet target</li>
           <li><strong>Total Float = 0</strong> &mdash; Task is on the critical path; any delay extends the project</li>
+          <li><strong>EMV &lt; 0</strong> &mdash; Threat (negative risk); expected loss</li>
+          <li><strong>EMV &gt; 0</strong> &mdash; Opportunity (positive risk); expected gain</li>
+          <li><strong>Total EMV &lt; 0</strong> &mdash; Net negative risk exposure; increase contingency reserve</li>
+          <li><strong>Contingency Reserve</strong> &mdash; Should cover the sum of threat EMVs</li>
         </ul>
       </div>
     </div>
@@ -1001,6 +1102,291 @@ function renderAllEVMCharts(d, bac, pv, ev, ac) {
     }]
   }));
 }
+
+// ─── EMV Calculator ───
+let emvRowCounter = 0;
+
+function addEMVRow(name, type, prob, impact) {
+  emvRowCounter++;
+  const div = document.createElement('div');
+  div.className = 'task-row';
+  div.style.gridTemplateColumns = '1fr 120px 120px 140px 50px';
+  div.id = 'emvrow-' + emvRowCounter;
+  div.innerHTML = `
+    <input type="text" placeholder="Risk name" value="${name || ''}" class="emv-name">
+    <select class="emv-type" style="padding:8px 10px;border:1px solid var(--surface2);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.85rem;">
+      <option value="Threat" ${type === 'Opportunity' ? '' : 'selected'}>Threat</option>
+      <option value="Opportunity" ${type === 'Opportunity' ? 'selected' : ''}>Opportunity</option>
+    </select>
+    <input type="number" placeholder="0-100" value="${prob !== undefined ? prob : ''}" step="any" min="0" max="100" class="emv-prob">
+    <input type="number" placeholder="e.g. -50000" value="${impact !== undefined ? impact : ''}" step="any" class="emv-impact">
+    <button class="remove-btn" onclick="this.parentElement.remove()">&times;</button>`;
+  document.getElementById('emv-list').appendChild(div);
+}
+
+function loadSampleEMV() {
+  document.getElementById('emv-list').innerHTML = '';
+  [
+    ['Server outage', 'Threat', 30, -50000],
+    ['Key resource leaves', 'Threat', 20, -80000],
+    ['Vendor delay', 'Threat', 40, -30000],
+    ['Scope creep', 'Threat', 50, -40000],
+    ['Early delivery bonus', 'Opportunity', 25, 60000],
+    ['Reuse existing module', 'Opportunity', 60, 35000],
+    ['Favorable exchange rate', 'Opportunity', 15, 20000],
+  ].forEach(r => addEMVRow(...r));
+}
+
+function clearEMV() {
+  document.getElementById('emv-list').innerHTML = '';
+  document.getElementById('emv-results').style.display = 'none';
+  document.getElementById('emv-error').style.display = 'none';
+  addEMVRow(); addEMVRow(); addEMVRow();
+}
+
+function calculateEMV() {
+  const rows = document.querySelectorAll('#emv-list .task-row');
+  const risks = [];
+  const errEl = document.getElementById('emv-error');
+  errEl.style.display = 'none';
+
+  rows.forEach(row => {
+    const name = row.querySelector('.emv-name').value.trim();
+    const type = row.querySelector('.emv-type').value;
+    const prob = parseFloat(row.querySelector('.emv-prob').value);
+    const impact = parseFloat(row.querySelector('.emv-impact').value);
+    if (name && !isNaN(prob) && !isNaN(impact) && prob > 0 && impact !== 0) {
+      let finalImpact = impact;
+      if (type === 'Threat' && impact > 0) finalImpact = -impact;
+      risks.push({ name, type, probability: prob / 100, impact: finalImpact });
+    }
+  });
+
+  if (!risks.length) { errEl.textContent = 'Add at least one risk with name, probability, and impact.'; errEl.style.display = 'block'; return; }
+
+  fetch('/api/emv', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ risks }),
+  })
+  .then(r => r.json())
+  .then(d => { if (d.error) { errEl.textContent = d.error; errEl.style.display = 'block'; return; } renderEMVResults(d); })
+  .catch(() => { errEl.textContent = 'Network error.'; errEl.style.display = 'block'; });
+}
+
+function renderEMVResults(d) {
+  document.getElementById('emv-results').style.display = 'block';
+  const items = d.items;
+
+  // Summary metrics
+  const emvClass = d.total_emv >= 0 ? 'good' : 'bad';
+  document.getElementById('emv-summary-grid').innerHTML =
+    metric('Total EMV', '$' + Number(d.total_emv).toLocaleString(undefined,{maximumFractionDigits:0}), 'Net risk exposure', emvClass) +
+    metric('Threats EMV', '$' + Number(d.total_threats).toLocaleString(undefined,{maximumFractionDigits:0}), d.threat_count + ' threats', 'bad') +
+    metric('Opportunities EMV', '$' + Number(d.total_opportunities).toLocaleString(undefined,{maximumFractionDigits:0}), d.opportunity_count + ' opportunities', 'good') +
+    metric('Risk Items', d.risk_count, d.threat_count + 'T / ' + d.opportunity_count + 'O', '');
+
+  const contingency = Math.abs(d.total_threats);
+  document.getElementById('emv-reserve-banner').innerHTML =
+    `<div style="color:var(--muted);font-size:0.85rem;">Recommended Contingency Reserve (based on threat EMV)</div>
+     <div class="path" style="color:var(--accent);">$${contingency.toLocaleString(undefined,{maximumFractionDigits:0})}</div>
+     <div class="dur">Net project risk exposure: <strong>$${Number(d.total_emv).toLocaleString(undefined,{maximumFractionDigits:0})}</strong></div>`;
+  document.getElementById('emv-reserve-banner').style.borderColor = 'rgba(59,130,246,0.3)';
+  document.getElementById('emv-reserve-banner').style.background = 'linear-gradient(135deg, rgba(59,130,246,0.12), rgba(59,130,246,0.04))';
+
+  // Table
+  const tbody = document.querySelector('#emv-table tbody');
+  tbody.innerHTML = items.map(i => `
+    <tr class="${i.emv < 0 ? 'critical-row' : ''}">
+      <td>${i.name}</td><td>${i.type}</td><td>${(i.probability*100).toFixed(0)}%</td>
+      <td>$${Number(i.impact).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+      <td>$${Number(i.emv).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+      <td><span class="tag ${i.emv < 0 ? 'tag-crit' : 'tag-ok'}">${i.emv < 0 ? 'Threat' : 'Opportunity'}</span></td>
+    </tr>`).join('');
+
+  // Interpretation
+  const interp = [];
+  if (d.total_emv < 0) {
+    interp.push(`<li style="color:var(--red)">Net EMV = $${Number(d.total_emv).toLocaleString()} — Overall risk exposure is <strong>negative</strong>. Budget should include a contingency reserve of at least <strong>$${contingency.toLocaleString()}</strong>.</li>`);
+  } else {
+    interp.push(`<li style="color:var(--green)">Net EMV = $${Number(d.total_emv).toLocaleString()} — Opportunities outweigh threats. Still recommend a contingency reserve of <strong>$${contingency.toLocaleString()}</strong>.</li>`);
+  }
+  const highest = items.reduce((a,b) => Math.abs(a.emv) > Math.abs(b.emv) ? a : b);
+  interp.push(`<li style="color:var(--yellow)">Highest impact: "${highest.name}" with EMV of $${Number(highest.emv).toLocaleString()} (P=${(highest.probability*100).toFixed(0)}%, I=$${Number(highest.impact).toLocaleString()}).</li>`);
+  if (d.threat_count > 0) interp.push(`<li style="color:var(--red)">${d.threat_count} threats contributing $${Number(d.total_threats).toLocaleString()} in expected losses.</li>`);
+  if (d.opportunity_count > 0) interp.push(`<li style="color:var(--green)">${d.opportunity_count} opportunities contributing $${Number(d.total_opportunities).toLocaleString()} in expected gains.</li>`);
+  document.getElementById('emv-interpretation').innerHTML = '<h3>Analysis</h3><ul>' + interp.join('') + '</ul>';
+
+  renderAllEMVCharts(d);
+}
+
+function renderAllEMVCharts(d) {
+  const items = d.items;
+  const names = items.map(i => i.name);
+  const emvs = items.map(i => i.emv);
+
+  // 1. EMV by item (horizontal bar)
+  dc('emv-items');
+  sc('emv-items', new Chart(document.getElementById('chart-emv-items'), {
+    type: 'bar',
+    data: {
+      labels: names,
+      datasets: [{
+        data: emvs,
+        backgroundColor: emvs.map(v => v < 0 ? 'rgba(239,68,68,0.7)' : 'rgba(34,197,94,0.7)'),
+        borderRadius: 4, borderSkipped: false,
+      }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: dollarTip } } },
+      scales: { x: { grid: { color: G }, ticks: { callback: dollarTick } }, y: { grid: { display: false }, ticks: { font: { size: 10 } } } }
+    },
+    plugins: [{
+      id: 'emvZero',
+      afterDraw(chart) {
+        const xs = chart.scales.x, ys = chart.scales.y;
+        if (xs.min < 0 && xs.max > 0) {
+          const x = xs.getPixelForValue(0), ctx = chart.ctx;
+          ctx.save(); ctx.beginPath(); ctx.setLineDash([4,3]); ctx.strokeStyle='#f1f5f9'; ctx.lineWidth=1;
+          ctx.moveTo(x, ys.top); ctx.lineTo(x, ys.bottom); ctx.stroke(); ctx.restore();
+        }
+      }
+    }]
+  }));
+
+  // 2. Threats vs Opportunities pie
+  dc('emv-pie');
+  const threatAbs = Math.abs(d.total_threats);
+  const oppAbs = Math.abs(d.total_opportunities);
+  sc('emv-pie', new Chart(document.getElementById('chart-emv-pie'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Threats ($' + threatAbs.toLocaleString() + ')', 'Opportunities ($' + oppAbs.toLocaleString() + ')'],
+      datasets: [{ data: [threatAbs, oppAbs], backgroundColor: ['#ef4444', '#22c55e'], borderWidth: 0 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true, cutout: '60%',
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 10, font: { size: 10 } } } }
+    },
+    plugins: [{ id: 'emvCenter', afterDraw(c) {
+      const {ctx,width,height}=c; ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillStyle = d.total_emv >= 0 ? '#22c55e' : '#ef4444';
+      ctx.font='bold 20px sans-serif'; ctx.fillText('$'+Number(d.total_emv).toLocaleString(undefined,{maximumFractionDigits:0}),width/2,height/2-6);
+      ctx.fillStyle='#94a3b8'; ctx.font='11px sans-serif'; ctx.fillText('Net EMV',width/2,height/2+14); ctx.restore();
+    }}]
+  }));
+
+  // 3. Bubble chart (probability vs impact)
+  dc('emv-bubble');
+  const maxAbsEMV = Math.max(...items.map(i => Math.abs(i.emv)), 1);
+  sc('emv-bubble', new Chart(document.getElementById('chart-emv-bubble'), {
+    type: 'bubble',
+    data: {
+      datasets: items.map(i => ({
+        label: i.name,
+        data: [{ x: i.impact, y: i.probability * 100, r: Math.max(6, Math.abs(i.emv) / maxAbsEMV * 25) }],
+        backgroundColor: i.emv < 0 ? 'rgba(239,68,68,0.5)' : 'rgba(34,197,94,0.5)',
+        borderColor: i.emv < 0 ? '#ef4444' : '#22c55e',
+        borderWidth: 1,
+      }))
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: {
+        callbacks: { label: ctx => { const i=items[ctx.datasetIndex]; return `${i.name}: P=${(i.probability*100).toFixed(0)}%, I=$${Number(i.impact).toLocaleString()}, EMV=$${Number(i.emv).toLocaleString()}`; } }
+      } },
+      scales: {
+        x: { grid: { color: G }, title: { display: true, text: 'Impact ($)', color: '#94a3b8' }, ticks: { callback: dollarTick } },
+        y: { min: 0, max: 105, grid: { color: G }, title: { display: true, text: 'Probability (%)', color: '#94a3b8' }, ticks: { callback: v => v + '%' } }
+      }
+    }
+  }));
+
+  // 4. Risk ranking by |EMV|
+  dc('emv-ranking');
+  const sorted = [...items].sort((a,b) => Math.abs(b.emv) - Math.abs(a.emv));
+  sc('emv-ranking', new Chart(document.getElementById('chart-emv-ranking'), {
+    type: 'bar',
+    data: {
+      labels: sorted.map(i => i.name),
+      datasets: [{
+        data: sorted.map(i => Math.abs(i.emv)),
+        backgroundColor: sorted.map(i => i.emv < 0 ? 'rgba(239,68,68,0.7)' : 'rgba(34,197,94,0.7)'),
+        borderRadius: 4, borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: dollarTip } } },
+      scales: { y: { beginAtZero: true, grid: { color: G }, ticks: { callback: dollarTick }, title: { display: true, text: '|EMV| ($)', color: '#94a3b8' } }, x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 45 } } }
+    }
+  }));
+
+  // 5. Waterfall
+  dc('emv-waterfall');
+  const wfSorted = [...items].sort((a,b) => a.emv - b.emv);
+  const wfNames = wfSorted.map(i => i.name).concat(['Net EMV']);
+  let cumWF = 0;
+  const wfBase = [], wfBar = [], wfColors = [];
+  wfSorted.forEach(i => {
+    if (i.emv < 0) { wfBase.push(cumWF + i.emv); wfBar.push(Math.abs(i.emv)); }
+    else { wfBase.push(cumWF); wfBar.push(i.emv); }
+    wfColors.push(i.emv < 0 ? '#ef4444' : '#22c55e');
+    cumWF += i.emv;
+  });
+  wfBase.push(0); wfBar.push(Math.abs(cumWF)); wfColors.push('#3b82f6');
+  sc('emv-waterfall', new Chart(document.getElementById('chart-emv-waterfall'), {
+    type: 'bar',
+    data: {
+      labels: wfNames,
+      datasets: [{
+        data: wfBar.map((v,i) => [wfBase[i], wfBase[i]+v]),
+        backgroundColor: wfColors,
+        borderRadius: 4, borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        label: ctx => { const v=ctx.raw; return '$'+Number(v[1]-v[0]).toLocaleString(undefined,{maximumFractionDigits:0}); }
+      } } },
+      scales: { y: { grid: { color: G }, ticks: { callback: dollarTick } }, x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 45 } } }
+    }
+  }));
+
+  // 6. Cumulative EMV
+  dc('emv-cumulative');
+  const cumSorted = [...items].sort((a,b) => a.emv - b.emv);
+  let cumVal = 0;
+  const cumVals = cumSorted.map(i => { cumVal += i.emv; return cumVal; });
+  sc('emv-cumulative', new Chart(document.getElementById('chart-emv-cumulative'), {
+    type: 'line',
+    data: {
+      labels: cumSorted.map(i => i.name),
+      datasets: [{
+        label: 'Cumulative EMV',
+        data: cumVals,
+        borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true,
+        tension: 0.3, pointRadius: 6,
+        pointBackgroundColor: cumVals.map(v => v < 0 ? '#ef4444' : '#22c55e'),
+        borderWidth: 2,
+      }, {
+        label: 'Zero line',
+        data: Array(cumVals.length).fill(0),
+        borderColor: '#f1f5f9', borderWidth: 1, borderDash: [4,3], pointRadius: 0, fill: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.datasetIndex === 0 ? 'Cumulative: $' + Number(ctx.raw).toLocaleString() : '' } } },
+      scales: { y: { grid: { color: G }, ticks: { callback: dollarTick }, title: { display: true, text: 'Cumulative EMV ($)', color: '#94a3b8' } }, x: { grid: { color: G }, ticks: { font: { size: 9 }, maxRotation: 45 } } }
+    }
+  }));
+}
+
+// Init EMV rows
+addEMVRow(); addEMVRow(); addEMVRow();
 
 // ─── Critical Path ───
 let taskCounter = 0;
