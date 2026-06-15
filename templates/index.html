@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PM Calculator — EVM, EMV &amp; Critical Path</title>
+<title>PM Calculator — EVM, EMV, Financial &amp; Critical Path</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -141,12 +141,13 @@
 <div class="container">
   <header>
     <h1>Project Management Calculator</h1>
-    <p>Earned Value Management &bull; EMV Risk Analysis &bull; Critical Path Analysis</p>
+    <p>Earned Value Management &bull; EMV Risk Analysis &bull; Financial Analysis &bull; Critical Path</p>
   </header>
 
-  <div class="tabs" style="max-width:680px;">
+  <div class="tabs" style="max-width:820px;">
     <button class="tab-btn active" onclick="switchTab('evm', this)">EVM Metrics</button>
     <button class="tab-btn" onclick="switchTab('emv', this)">EMV Calculator</button>
+    <button class="tab-btn" onclick="switchTab('fin', this)">Financial</button>
     <button class="tab-btn" onclick="switchTab('scurve', this)">S-Curve Tracker</button>
     <button class="tab-btn" onclick="switchTab('cp', this)">Critical Path</button>
     <button class="tab-btn" onclick="switchTab('ref', this)">Formulas</button>
@@ -382,6 +383,152 @@
     </div>
   </div>
 
+  <!-- ==================== FINANCIAL CALCULATOR TAB ==================== -->
+  <div id="tab-fin" class="tab-content">
+    <div class="card">
+      <h2>Investment &amp; Cash Flow Parameters <span class="badge">Financial Analysis</span></h2>
+      <p style="font-size:0.85rem;color:var(--muted);margin-bottom:14px;">
+        Enter initial investment, discount rate, and period cash flows to calculate NPV, IRR, ROI, BCR, Payback Period, Profitability Index, and Break-Even.
+      </p>
+      <div class="form-grid">
+        <div class="field">
+          <label>Initial Investment ($)</label>
+          <input type="number" id="fin-invest" placeholder="e.g. 500000" step="any" value="500000">
+          <div class="hint">Up-front cost of the project</div>
+        </div>
+        <div class="field">
+          <label>Discount Rate (%)</label>
+          <input type="number" id="fin-rate" placeholder="e.g. 10" step="any" value="10">
+          <div class="hint">Required rate of return / hurdle rate</div>
+        </div>
+      </div>
+      <div style="margin-top:16px;">
+        <label style="font-size:0.8rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Break-Even Parameters (optional)</label>
+        <div class="form-grid" style="margin-top:8px;">
+          <div class="field">
+            <label>Fixed Costs ($)</label>
+            <input type="number" id="fin-fixed" placeholder="e.g. 200000" step="any" value="200000">
+          </div>
+          <div class="field">
+            <label>Variable Cost / Unit ($)</label>
+            <input type="number" id="fin-varcost" placeholder="e.g. 50" step="any" value="50">
+          </div>
+          <div class="field">
+            <label>Selling Price / Unit ($)</label>
+            <input type="number" id="fin-price" placeholder="e.g. 120" step="any" value="120">
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:16px;">
+        <label style="font-size:0.8rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Cash Flows per Period</label>
+        <div class="table-wrap" style="margin-top:8px;">
+          <table class="period-table" id="fin-cf-table">
+            <thead>
+              <tr id="fin-cf-header"><th style="text-align:left;padding-left:8px;">Metric</th></tr>
+            </thead>
+            <tbody>
+              <tr id="fin-cf-row"><td class="row-label">Cash Flow ($)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="addFinPeriod()">+ Add Period</button>
+        <button class="btn btn-secondary" onclick="removeFinPeriod()">- Remove Last</button>
+        <button class="btn btn-secondary" onclick="loadSampleFinancial()">Load Sample</button>
+        <button class="btn btn-primary" onclick="calculateFinancial()">Calculate Financials</button>
+      </div>
+      <div id="fin-error" class="error-msg"></div>
+    </div>
+
+    <div id="fin-results" style="display:none">
+      <div class="card">
+        <h2>Key Financial Metrics</h2>
+        <div class="results-grid" id="fin-metrics-grid"></div>
+      </div>
+      <div id="fin-be-section" style="display:none">
+        <div class="card">
+          <h2>Break-Even Analysis</h2>
+          <div class="results-grid" id="fin-be-grid"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Visual Analysis — Cash Flow &amp; NPV</h2>
+        <div class="charts-row">
+          <div class="chart-box">
+            <h3>Cumulative Cash Flow (Payback Visualization)</h3>
+            <canvas id="chart-fin-cumcf"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>NPV Sensitivity (IRR where NPV = 0)</h3>
+            <canvas id="chart-fin-npvsens"></canvas>
+          </div>
+        </div>
+        <div class="charts-row" style="margin-top:16px;">
+          <div class="chart-box">
+            <h3>Cash Flow per Period</h3>
+            <canvas id="chart-fin-cfbar"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Undiscounted vs Discounted Cash Flows</h3>
+            <canvas id="chart-fin-dcf"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Visual Analysis — Ratios &amp; Health</h2>
+        <div class="charts-row">
+          <div class="chart-box">
+            <h3>Financial Health Radar</h3>
+            <canvas id="chart-fin-radar"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Key Financial Ratios</h3>
+            <canvas id="chart-fin-ratios"></canvas>
+          </div>
+        </div>
+        <div class="charts-row" style="margin-top:16px;">
+          <div class="chart-box">
+            <h3>Investment vs PV of Returns</h3>
+            <canvas id="chart-fin-invest"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Investment Waterfall</h3>
+            <canvas id="chart-fin-waterfall"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div id="fin-be-chart-section" style="display:none">
+        <div class="card">
+          <h2>Break-Even Chart</h2>
+          <div class="chart-box full tall" style="padding:20px;">
+            <canvas id="chart-fin-breakeven" style="max-height:400px;"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Period Detail Table</h2>
+        <div class="table-wrap">
+          <table id="fin-detail-table">
+            <thead>
+              <tr><th>Period</th><th>Cash Flow</th><th>Discounted CF</th><th>Cumulative CF</th><th>Cumulative DCF</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Interpretation</h2>
+        <div class="interpretation" id="fin-interpretation"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ==================== S-CURVE TRACKER TAB ==================== -->
   <div id="tab-scurve" class="tab-content">
     <div class="card">
@@ -612,6 +759,20 @@
       </div>
     </div>
     <div class="card">
+      <h2>Financial Calculations</h2>
+      <div class="formulas">
+        <div class="formula-item"><div class="fname">Net Present Value (NPV)</div><div class="fdef">NPV = -I₀ + &Sigma; CF&#x2080;/(1+r)&#x1D57;</div></div>
+        <div class="formula-item"><div class="fname">Internal Rate of Return (IRR)</div><div class="fdef">Rate r where NPV = 0</div></div>
+        <div class="formula-item"><div class="fname">Payback Period</div><div class="fdef">Period where Cumulative CF &ge; 0</div></div>
+        <div class="formula-item"><div class="fname">ROI</div><div class="fdef">ROI = (Returns - Cost) / Cost &times; 100</div></div>
+        <div class="formula-item"><div class="fname">Benefit-Cost Ratio (BCR)</div><div class="fdef">BCR = PV(Benefits) / PV(Costs)</div></div>
+        <div class="formula-item"><div class="fname">Profitability Index (PI)</div><div class="fdef">PI = PV(Cash Flows) / Investment</div></div>
+        <div class="formula-item"><div class="fname">Break-Even (Units)</div><div class="fdef">BEP = Fixed Costs / (Price - Var Cost)</div></div>
+        <div class="formula-item"><div class="fname">Break-Even (Revenue)</div><div class="fdef">BEP$ = Fixed Costs / CM Ratio</div></div>
+        <div class="formula-item"><div class="fname">Discounted Payback</div><div class="fdef">Period where Cum. DCF &ge; 0</div></div>
+      </div>
+    </div>
+    <div class="card">
       <h2>Expected Monetary Value (EMV)</h2>
       <div class="formulas">
         <div class="formula-item"><div class="fname">EMV (single risk)</div><div class="fdef">EMV = Probability &times; Impact</div></div>
@@ -642,6 +803,12 @@
           <li><strong>TCPI &gt; 1.0</strong> &mdash; Must improve efficiency to meet target</li>
           <li><strong>TCPI &lt; 1.0</strong> &mdash; Can relax efficiency and still meet target</li>
           <li><strong>Total Float = 0</strong> &mdash; Task is on the critical path; any delay extends the project</li>
+          <li><strong>NPV &gt; 0</strong> &mdash; Project adds value; accept</li>
+          <li><strong>NPV &lt; 0</strong> &mdash; Project destroys value; reject</li>
+          <li><strong>IRR &gt; Discount Rate</strong> &mdash; Investment is attractive</li>
+          <li><strong>BCR &gt; 1.0</strong> &mdash; Benefits exceed costs</li>
+          <li><strong>PI &gt; 1.0</strong> &mdash; Good investment (creates value per dollar)</li>
+          <li><strong>ROI &gt; 0%</strong> &mdash; Positive return on investment</li>
           <li><strong>EMV &lt; 0</strong> &mdash; Threat (negative risk); expected loss</li>
           <li><strong>EMV &gt; 0</strong> &mdash; Opportunity (positive risk); expected gain</li>
           <li><strong>Total EMV &lt; 0</strong> &mdash; Net negative risk exposure; increase contingency reserve</li>
@@ -1102,6 +1269,415 @@ function renderAllEVMCharts(d, bac, pv, ev, ac) {
     }]
   }));
 }
+
+// ─── Financial Calculator ───
+let finPeriodCount = 0;
+
+function addFinPeriod(cfVal) {
+  finPeriodCount++;
+  const num = finPeriodCount;
+  const headerRow = document.getElementById('fin-cf-header');
+  const th = document.createElement('th');
+  th.id = 'fph-' + num;
+  th.textContent = 'P' + num;
+  headerRow.appendChild(th);
+  const cfRow = document.getElementById('fin-cf-row');
+  const td = document.createElement('td');
+  td.id = 'fcf-' + num;
+  td.innerHTML = `<input type="number" step="any" placeholder="0" value="${cfVal !== undefined ? cfVal : ''}">`;
+  cfRow.appendChild(td);
+}
+
+function removeFinPeriod() {
+  if (finPeriodCount < 1) return;
+  const num = finPeriodCount;
+  const el = id => { const e = document.getElementById(id); if (e) e.remove(); };
+  el('fph-' + num);
+  el('fcf-' + num);
+  finPeriodCount--;
+}
+
+function loadSampleFinancial() {
+  while (finPeriodCount > 0) removeFinPeriod();
+  document.getElementById('fin-invest').value = 500000;
+  document.getElementById('fin-rate').value = 10;
+  document.getElementById('fin-fixed').value = 200000;
+  document.getElementById('fin-varcost').value = 50;
+  document.getElementById('fin-price').value = 120;
+  [80000, 120000, 140000, 140000, 120000, 100000, 80000].forEach(v => addFinPeriod(v));
+}
+
+function collectFinCashFlows() {
+  const cfs = [];
+  for (let i = 1; i <= finPeriodCount; i++) {
+    const el = document.querySelector('#fcf-' + i + ' input');
+    if (el) cfs.push(parseFloat(el.value) || 0);
+  }
+  return cfs;
+}
+
+function calculateFinancial() {
+  const errEl = document.getElementById('fin-error');
+  errEl.style.display = 'none';
+  const invest = parseFloat(document.getElementById('fin-invest').value);
+  const rate = parseFloat(document.getElementById('fin-rate').value);
+  if (isNaN(invest) || invest < 0) { errEl.textContent = 'Enter a valid initial investment.'; errEl.style.display = 'block'; return; }
+  if (isNaN(rate)) { errEl.textContent = 'Enter a valid discount rate.'; errEl.style.display = 'block'; return; }
+  const cfs = collectFinCashFlows();
+  if (cfs.length < 1 || cfs.every(c => c === 0)) { errEl.textContent = 'Enter at least one non-zero cash flow.'; errEl.style.display = 'block'; return; }
+
+  const payload = {
+    initial_investment: invest, discount_rate: rate, cash_flows: cfs,
+    fixed_costs: parseFloat(document.getElementById('fin-fixed').value) || 0,
+    variable_cost_per_unit: parseFloat(document.getElementById('fin-varcost').value) || 0,
+    selling_price_per_unit: parseFloat(document.getElementById('fin-price').value) || 0,
+  };
+
+  fetch('/api/financial', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  .then(r => r.json())
+  .then(d => { if (d.error) { errEl.textContent = d.error; errEl.style.display = 'block'; return; } renderFinResults(d); })
+  .catch(() => { errEl.textContent = 'Network error.'; errEl.style.display = 'block'; });
+}
+
+function renderFinResults(d) {
+  document.getElementById('fin-results').style.display = 'block';
+
+  const fmtD = v => v !== null ? '$' + Number(v).toLocaleString(undefined, {maximumFractionDigits: 0}) : 'N/A';
+  const npvClass = d.npv >= 0 ? 'good' : 'bad';
+  const irrStr = d.irr !== null ? d.irr.toFixed(2) + '%' : 'N/A';
+  const irrClass = d.irr !== null && d.irr > d.discount_rate ? 'good' : 'bad';
+  const roiStr = d.roi !== null ? d.roi.toFixed(1) + '%' : 'N/A';
+  const roiClass = d.roi !== null && d.roi > 0 ? 'good' : 'bad';
+  const bcrStr = d.bcr !== null ? d.bcr.toFixed(3) : 'N/A';
+  const bcrClass = d.bcr !== null && d.bcr >= 1 ? 'good' : 'bad';
+  const piStr = d.pi !== null ? d.pi.toFixed(3) : 'N/A';
+  const piClass = d.pi !== null && d.pi >= 1 ? 'good' : 'bad';
+  const pbStr = d.payback !== null ? d.payback.toFixed(1) + ' periods' : 'Never';
+  const dpbStr = d.disc_payback !== null ? d.disc_payback.toFixed(1) + ' periods' : 'Never';
+
+  document.getElementById('fin-metrics-grid').innerHTML =
+    metric('NPV', fmtD(d.npv), 'Net Present Value', npvClass) +
+    metric('IRR', irrStr, 'Internal Rate of Return', irrClass) +
+    metric('ROI', roiStr, 'Return on Investment', roiClass) +
+    metric('BCR', bcrStr, 'Benefit-Cost Ratio', bcrClass) +
+    metric('PI', piStr, 'Profitability Index', piClass) +
+    metric('Payback', pbStr, 'Simple Payback Period', '') +
+    metric('Disc. Payback', dpbStr, 'Discounted Payback', '') +
+    metric('Total Returns', fmtD(d.total_returns), 'Sum of all cash flows', '');
+
+  // Break-Even section
+  if (d.bep_units !== null) {
+    document.getElementById('fin-be-section').style.display = 'block';
+    document.getElementById('fin-be-chart-section').style.display = 'block';
+    const cmRatio = (d.contribution_margin / d.selling_price_per_unit * 100).toFixed(1);
+    document.getElementById('fin-be-grid').innerHTML =
+      metric('BEP (Units)', Number(d.bep_units).toLocaleString(undefined,{maximumFractionDigits:0}), 'Break-even in units', '') +
+      metric('BEP (Revenue)', fmtD(d.bep_dollars), 'Break-even revenue', '') +
+      metric('CM / Unit', '$' + d.contribution_margin.toFixed(2), 'Contribution margin', '') +
+      metric('CM Ratio', cmRatio + '%', 'CM / Price', '');
+  } else {
+    document.getElementById('fin-be-section').style.display = 'none';
+    document.getElementById('fin-be-chart-section').style.display = 'none';
+  }
+
+  // Detail table
+  const tbody = document.querySelector('#fin-detail-table tbody');
+  tbody.innerHTML = d.cash_flows.map((cf, i) => `
+    <tr>
+      <td>P${i+1}</td><td>${fmtD(cf)}</td><td>${fmtD(d.dcf[i])}</td>
+      <td style="color:${d.cum_cf[i]>=0?'var(--green)':'var(--red)'}">${fmtD(d.cum_cf[i])}</td>
+      <td style="color:${d.cum_dcf[i]>=0?'var(--green)':'var(--red)'}">${fmtD(d.cum_dcf[i])}</td>
+    </tr>`).join('');
+
+  // Interpretation
+  const interp = [];
+  if (d.npv >= 0) interp.push(`<li style="color:var(--green)">NPV = ${fmtD(d.npv)} — Project adds value. Accept.</li>`);
+  else interp.push(`<li style="color:var(--red)">NPV = ${fmtD(d.npv)} — Project destroys value at ${d.discount_rate}% discount rate.</li>`);
+  if (d.irr !== null) {
+    if (d.irr > d.discount_rate) interp.push(`<li style="color:var(--green)">IRR = ${d.irr.toFixed(2)}% — Exceeds hurdle rate of ${d.discount_rate}%.</li>`);
+    else interp.push(`<li style="color:var(--red)">IRR = ${d.irr.toFixed(2)}% — Below hurdle rate of ${d.discount_rate}%.</li>`);
+  }
+  if (d.roi !== null) interp.push(`<li style="color:${d.roi>0?'var(--green)':'var(--red)'}">ROI = ${d.roi.toFixed(1)}% — For every $1 invested, $${(1+d.roi/100).toFixed(2)} returned.</li>`);
+  if (d.bcr !== null) interp.push(`<li style="color:${d.bcr>=1?'var(--green)':'var(--red)'}">BCR = ${d.bcr.toFixed(3)} — ${d.bcr>=1?'Benefits exceed costs.':'Costs exceed benefits.'}</li>`);
+  if (d.pi !== null) interp.push(`<li style="color:${d.pi>=1?'var(--green)':'var(--red)'}">PI = ${d.pi.toFixed(3)} — ${d.pi>=1?'Creates $'+d.pi.toFixed(2)+' value per $1 invested.':'Returns less than invested.'}</li>`);
+  if (d.payback !== null) interp.push(`<li style="color:var(--muted)">Payback = ${d.payback.toFixed(1)} periods out of ${d.cash_flows.length}.</li>`);
+  else interp.push(`<li style="color:var(--yellow)">Payback = Never — investment not recovered within timeline.</li>`);
+  if (d.bep_units !== null) interp.push(`<li style="color:var(--muted)">Break-Even = ${Number(d.bep_units).toLocaleString(undefined,{maximumFractionDigits:0})} units (${fmtD(d.bep_dollars)} revenue).</li>`);
+  document.getElementById('fin-interpretation').innerHTML = '<h3>Analysis</h3><ul>' + interp.join('') + '</ul>';
+
+  renderAllFinCharts(d);
+}
+
+function renderAllFinCharts(d) {
+  const n = d.cash_flows.length;
+  const pLabels = d.cash_flows.map((_, i) => 'P' + (i + 1));
+  const allLabels = ['P0'].concat(pLabels);
+  const cumCfFull = [-d.initial_investment].concat(d.cum_cf);
+  const cumDcfFull = [-d.initial_investment].concat(d.cum_dcf);
+
+  // 1. Cumulative Cash Flow
+  dc('fin-cumcf');
+  sc('fin-cumcf', new Chart(document.getElementById('chart-fin-cumcf'), {
+    type: 'line',
+    data: {
+      labels: allLabels,
+      datasets: [
+        { label: 'Undiscounted', data: cumCfFull, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.3, pointRadius: 5, borderWidth: 2 },
+        { label: 'Discounted', data: cumDcfFull, borderColor: '#a78bfa', borderDash: [6,4], backgroundColor: 'rgba(167,139,250,0.1)', fill: true, tension: 0.3, pointRadius: 5, borderWidth: 2 },
+        { label: 'Break-even', data: Array(allLabels.length).fill(0), borderColor: '#22c55e', borderWidth: 1, borderDash: [4,3], pointRadius: 0, fill: false },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 10 } }, tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': $' + Number(ctx.raw).toLocaleString() } } },
+      scales: { y: { grid: { color: G }, ticks: { callback: dollarTick } }, x: { grid: { color: G } } }
+    }
+  }));
+
+  // 2. NPV Sensitivity
+  dc('fin-npvsens');
+  const sensRates = d.npv_sensitivity.map(s => s.rate);
+  const sensNPVs = d.npv_sensitivity.map(s => s.npv);
+  sc('fin-npvsens', new Chart(document.getElementById('chart-fin-npvsens'), {
+    type: 'line',
+    data: {
+      labels: sensRates.map(r => r + '%'),
+      datasets: [{
+        label: 'NPV', data: sensNPVs,
+        borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true,
+        tension: 0.3, pointRadius: 3,
+        pointBackgroundColor: sensNPVs.map(v => v >= 0 ? '#22c55e' : '#ef4444'),
+        borderWidth: 2,
+      }, {
+        label: 'Zero line', data: Array(sensRates.length).fill(0),
+        borderColor: '#f1f5f9', borderWidth: 1, borderDash: [4,3], pointRadius: 0, fill: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.datasetIndex===0 ? 'NPV: $' + Number(ctx.raw).toLocaleString() : '' } } },
+      scales: { y: { grid: { color: G }, ticks: { callback: dollarTick } }, x: { grid: { color: G }, ticks: { maxTicksLimit: 12 } } }
+    },
+    plugins: [{
+      id: 'finIrrLine',
+      afterDraw(chart) {
+        if (d.irr === null) return;
+        const xs = chart.scales.x, ys = chart.scales.y, ctx = chart.ctx;
+        const irrIdx = d.irr / 2;
+        const x = xs.getPixelForValue(irrIdx);
+        ctx.save(); ctx.beginPath(); ctx.setLineDash([6,4]); ctx.strokeStyle='#eab308'; ctx.lineWidth=2;
+        ctx.moveTo(x, ys.top); ctx.lineTo(x, ys.bottom); ctx.stroke(); ctx.restore();
+        ctx.fillStyle='#eab308'; ctx.font='bold 10px sans-serif'; ctx.fillText('IRR: '+d.irr.toFixed(1)+'%', x+4, ys.top+12);
+      }
+    }]
+  }));
+
+  // 3. Cash Flow per Period
+  dc('fin-cfbar');
+  sc('fin-cfbar', new Chart(document.getElementById('chart-fin-cfbar'), {
+    type: 'bar',
+    data: {
+      labels: pLabels,
+      datasets: [{
+        data: d.cash_flows,
+        backgroundColor: d.cash_flows.map(v => v >= 0 ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)'),
+        borderRadius: 4, borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: dollarTip } } },
+      scales: { y: { grid: { color: G }, ticks: { callback: dollarTick } }, x: { grid: { display: false } } }
+    }
+  }));
+
+  // 4. Undiscounted vs Discounted
+  dc('fin-dcf');
+  sc('fin-dcf', new Chart(document.getElementById('chart-fin-dcf'), {
+    type: 'bar',
+    data: {
+      labels: pLabels,
+      datasets: [
+        { label: 'Undiscounted', data: d.cash_flows, backgroundColor: 'rgba(59,130,246,0.6)', borderRadius: 3 },
+        { label: 'Discounted (PV)', data: d.dcf, backgroundColor: 'rgba(167,139,250,0.6)', borderRadius: 3 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 10 } }, tooltip: { callbacks: { label: dollarTip } } },
+      scales: { y: { beginAtZero: true, grid: { color: G }, ticks: { callback: dollarTick } }, x: { grid: { display: false } } }
+    }
+  }));
+
+  // 5. Financial Health Radar
+  dc('fin-radar');
+  const npvScore = d.initial_investment > 0 ? Math.min(2, Math.max(0, 1 + d.npv / d.initial_investment)) : 0;
+  const irrScore = d.irr !== null && d.discount_rate > 0 ? Math.min(2, d.irr / d.discount_rate) : 0;
+  const roiScore = d.roi !== null ? Math.min(2, Math.max(0, d.roi / 100 + 1)) : 0;
+  const bcrScore = d.bcr !== null ? Math.min(2, d.bcr) : 0;
+  const piScore = d.pi !== null ? Math.min(2, d.pi) : 0;
+  const pbScore = d.payback !== null ? Math.min(2, (n - d.payback) / n * 2) : 0;
+  sc('fin-radar', new Chart(document.getElementById('chart-fin-radar'), {
+    type: 'radar',
+    data: {
+      labels: ['NPV Health', 'IRR vs Hurdle', 'ROI', 'BCR', 'PI', 'Payback Speed'],
+      datasets: [{
+        label: 'Project', data: [npvScore, irrScore, roiScore, bcrScore, piScore, pbScore],
+        borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.15)', pointBackgroundColor: '#3b82f6', borderWidth: 2,
+      }, {
+        label: 'Baseline (1.0)', data: [1,1,1,1,1,1],
+        borderColor: 'rgba(34,197,94,0.5)', backgroundColor: 'transparent', pointBackgroundColor: '#22c55e',
+        borderWidth: 1, borderDash: [5,5], pointRadius: 3,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      scales: { r: { min: 0, max: 2, grid: { color: '#334155' }, angleLines: { color: '#334155' }, pointLabels: { color: '#94a3b8', font: { size: 10 } }, ticks: { display: false, stepSize: 0.5 } } },
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 10, font: { size: 10 } } } }
+    }
+  }));
+
+  // 6. Key Ratios Bar
+  dc('fin-ratios');
+  const bcrV = d.bcr || 0, piV = d.pi || 0, roiNorm = (d.roi || 0) / 100;
+  sc('fin-ratios', new Chart(document.getElementById('chart-fin-ratios'), {
+    type: 'bar',
+    data: {
+      labels: ['BCR', 'Profitability Index', 'ROI / 100'],
+      datasets: [{
+        data: [bcrV, piV, roiNorm],
+        backgroundColor: [bcrV>=1?'#22c55e':'#ef4444', piV>=1?'#22c55e':'#ef4444', roiNorm>0?'#22c55e':'#ef4444'],
+        borderRadius: 6, borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, grid: { color: G }, ticks: { stepSize: 0.25 } }, x: { grid: { display: false } } }
+    },
+    plugins: [{
+      id: 'finThresh',
+      afterDraw(chart) {
+        const ys = chart.scales.y, xs = chart.scales.x;
+        if (ys.min <= 1 && ys.max >= 1) {
+          const y = ys.getPixelForValue(1), ctx = chart.ctx;
+          ctx.save(); ctx.beginPath(); ctx.setLineDash([6,4]); ctx.strokeStyle='#eab308'; ctx.lineWidth=1.5;
+          ctx.moveTo(xs.left, y); ctx.lineTo(xs.right, y); ctx.stroke(); ctx.restore();
+          ctx.fillStyle='#94a3b8'; ctx.font='10px sans-serif'; ctx.fillText('Threshold: 1.0', xs.right-80, y-6);
+        }
+      }
+    }]
+  }));
+
+  // 7. Investment vs PV Returns
+  dc('fin-invest');
+  const pvTotal = d.dcf.reduce((s,v) => s+v, 0);
+  sc('fin-invest', new Chart(document.getElementById('chart-fin-invest'), {
+    type: 'bar',
+    data: {
+      labels: ['Investment', 'PV of Returns'],
+      datasets: [{
+        data: [d.initial_investment, pvTotal],
+        backgroundColor: ['#ef4444', pvTotal >= d.initial_investment ? '#22c55e' : '#eab308'],
+        borderRadius: 6, borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: dollarTip } } },
+      scales: { y: { beginAtZero: true, grid: { color: G }, ticks: { callback: dollarTick } }, x: { grid: { display: false } } }
+    }
+  }));
+
+  // 8. Investment Waterfall
+  dc('fin-waterfall');
+  const netProfit = d.total_returns - d.initial_investment;
+  const wfVals = [-d.initial_investment, d.total_returns, netProfit, d.npv];
+  const wfColors = ['#ef4444', '#22c55e', netProfit>=0?'#22c55e':'#ef4444', d.npv>=0?'#22c55e':'#ef4444'];
+  sc('fin-waterfall', new Chart(document.getElementById('chart-fin-waterfall'), {
+    type: 'bar',
+    data: {
+      labels: ['Investment', 'Total Returns', 'Net Profit', 'NPV'],
+      datasets: [{
+        data: wfVals,
+        backgroundColor: wfColors,
+        borderRadius: 4, borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: dollarTip } } },
+      scales: { y: { grid: { color: G }, ticks: { callback: dollarTick } }, x: { grid: { display: false } } }
+    },
+    plugins: [{
+      id: 'finZero',
+      afterDraw(chart) {
+        const ys = chart.scales.y, xs = chart.scales.x;
+        if (ys.min < 0 && ys.max > 0) {
+          const y = ys.getPixelForValue(0), ctx = chart.ctx;
+          ctx.save(); ctx.beginPath(); ctx.setLineDash([4,3]); ctx.strokeStyle='#f1f5f9'; ctx.lineWidth=1;
+          ctx.moveTo(xs.left, y); ctx.lineTo(xs.right, y); ctx.stroke(); ctx.restore();
+        }
+      }
+    }]
+  }));
+
+  // 9. Break-Even Chart
+  if (d.bep_units !== null) {
+    dc('fin-breakeven');
+    const maxU = Math.ceil(d.bep_units * 2.5);
+    const step = Math.max(1, Math.floor(maxU / 50));
+    const units = [];
+    for (let u = 0; u <= maxU; u += step) units.push(u);
+    const totalCosts = units.map(u => d.fixed_costs + d.variable_cost_per_unit * u);
+    const totalRev = units.map(u => d.selling_price_per_unit * u);
+    const fixedLine = units.map(() => d.fixed_costs);
+    sc('fin-breakeven', new Chart(document.getElementById('chart-fin-breakeven'), {
+      type: 'line',
+      data: {
+        labels: units.map(u => u.toLocaleString()),
+        datasets: [
+          { label: 'Total Revenue', data: totalRev, borderColor: '#22c55e', borderWidth: 3, pointRadius: 0, tension: 0 },
+          { label: 'Total Costs', data: totalCosts, borderColor: '#ef4444', borderWidth: 3, pointRadius: 0, tension: 0 },
+          { label: 'Fixed Costs', data: fixedLine, borderColor: '#eab308', borderWidth: 2, borderDash: [6,4], pointRadius: 0, tension: 0 },
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'bottom', labels: { usePointStyle: true, padding: 14, font: { size: 11 } } },
+          tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': $' + Number(ctx.raw).toLocaleString() } }
+        },
+        scales: {
+          y: { beginAtZero: true, grid: { color: G }, ticks: { callback: dollarTick }, title: { display: true, text: 'Amount ($)', color: '#94a3b8' } },
+          x: { grid: { color: G }, title: { display: true, text: 'Units Sold', color: '#94a3b8' }, ticks: { maxTicksLimit: 12 } }
+        }
+      },
+      plugins: [{
+        id: 'bepLine',
+        afterDraw(chart) {
+          const xs = chart.scales.x, ys = chart.scales.y, ctx = chart.ctx;
+          const bepIdx = units.findIndex(u => u >= d.bep_units);
+          if (bepIdx < 0) return;
+          const x = xs.getPixelForValue(bepIdx);
+          ctx.save(); ctx.beginPath(); ctx.setLineDash([6,4]); ctx.strokeStyle='#3b82f6'; ctx.lineWidth=2;
+          ctx.moveTo(x, ys.top); ctx.lineTo(x, ys.bottom); ctx.stroke(); ctx.restore();
+          ctx.fillStyle='#3b82f6'; ctx.font='bold 11px sans-serif';
+          ctx.fillText('BEP: '+Number(d.bep_units).toLocaleString(undefined,{maximumFractionDigits:0})+' units', x+6, ys.top+14);
+        }
+      }]
+    }));
+  }
+}
+
+// Init financial periods
+for (let i = 0; i < 7; i++) addFinPeriod();
 
 // ─── EMV Calculator ───
 let emvRowCounter = 0;

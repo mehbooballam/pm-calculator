@@ -71,6 +71,124 @@ def calculate_evm():
     })
 
 
+@app.route("/api/financial", methods=["POST"])
+def calculate_financial():
+    """Calculate Payback, NPV, IRR, BCR, ROI, PI, and Break-Even."""
+    data = request.json
+    try:
+        initial_investment = float(data["initial_investment"])
+        discount_rate = float(data["discount_rate"])
+        cash_flows = [float(c) for c in data["cash_flows"]]
+    except (KeyError, ValueError, TypeError):
+        return jsonify({"error": "Provide initial_investment, discount_rate, and cash_flows array."}), 400
+
+    if initial_investment < 0:
+        return jsonify({"error": "Initial investment must be non-negative."}), 400
+    if not cash_flows:
+        return jsonify({"error": "Provide at least one cash flow period."}), 400
+
+    r = discount_rate / 100
+    n = len(cash_flows)
+
+    dcf = [cf / (1 + r) ** (t + 1) if r != 0 else cf for t, cf in enumerate(cash_flows)]
+
+    npv = -initial_investment + sum(dcf)
+
+    cum_cf, cum_dcf = [], []
+    running, running_d = -initial_investment, -initial_investment
+    for i in range(n):
+        running += cash_flows[i]
+        running_d += dcf[i]
+        cum_cf.append(round(running, 2))
+        cum_dcf.append(round(running_d, 2))
+
+    payback = None
+    for t in range(n):
+        if cum_cf[t] >= 0:
+            if t == 0:
+                payback = round(initial_investment / cash_flows[0], 2) if cash_flows[0] > 0 else 0
+            else:
+                prev = cum_cf[t - 1]
+                payback = round(t + abs(prev) / cash_flows[t], 2) if cash_flows[t] > 0 else t + 1
+            break
+
+    disc_payback = None
+    for t in range(n):
+        if cum_dcf[t] >= 0:
+            if t == 0:
+                disc_payback = round(initial_investment / dcf[0], 2) if dcf[0] > 0 else 0
+            else:
+                prev = cum_dcf[t - 1]
+                disc_payback = round(t + abs(prev) / dcf[t], 2) if dcf[t] > 0 else t + 1
+            break
+
+    def npv_at(rate):
+        return -initial_investment + sum(cf / (1 + rate) ** (t + 1) for t, cf in enumerate(cash_flows))
+
+    irr = None
+    lo, hi = -0.5, 5.0
+    try:
+        if npv_at(lo) * npv_at(hi) < 0:
+            for _ in range(200):
+                mid = (lo + hi) / 2
+                if abs(npv_at(mid)) < 0.01:
+                    irr = round(mid * 100, 4)
+                    break
+                if npv_at(lo) * npv_at(mid) < 0:
+                    hi = mid
+                else:
+                    lo = mid
+            if irr is None:
+                irr = round((lo + hi) / 2 * 100, 4)
+    except (ZeroDivisionError, OverflowError):
+        irr = None
+
+    total_returns = sum(cash_flows)
+    roi = round(((total_returns - initial_investment) / initial_investment) * 100, 4) if initial_investment > 0 else None
+
+    pv_benefits = sum(d for d in dcf if d > 0)
+    pv_costs = initial_investment + abs(sum(d for d in dcf if d < 0))
+    bcr = round(pv_benefits / pv_costs, 4) if pv_costs > 0 else None
+
+    pv_future = sum(dcf)
+    pi = round(pv_future / initial_investment, 4) if initial_investment > 0 else None
+
+    fixed_costs = float(data.get("fixed_costs", 0))
+    variable_cost = float(data.get("variable_cost_per_unit", 0))
+    selling_price = float(data.get("selling_price_per_unit", 0))
+    bep_units = bep_dollars = contribution_margin = None
+    if selling_price > 0 and selling_price > variable_cost:
+        contribution_margin = round(selling_price - variable_cost, 2)
+        bep_units = round(fixed_costs / contribution_margin, 2) if contribution_margin > 0 else None
+        cm_ratio = contribution_margin / selling_price
+        bep_dollars = round(fixed_costs / cm_ratio, 2) if cm_ratio > 0 else None
+
+    npv_sensitivity = []
+    for test_rate in range(0, 51, 2):
+        tr = test_rate / 100
+        test_npv = -initial_investment + sum(cf / (1 + tr) ** (t + 1) for t, cf in enumerate(cash_flows))
+        npv_sensitivity.append({"rate": test_rate, "npv": round(test_npv, 2)})
+
+    return jsonify({
+        "npv": round(npv, 2), "irr": irr, "roi": roi, "bcr": bcr, "pi": pi,
+        "payback": payback, "disc_payback": disc_payback,
+        "cash_flows": [round(c, 2) for c in cash_flows],
+        "dcf": [round(d, 2) for d in dcf],
+        "cum_cf": cum_cf, "cum_dcf": cum_dcf,
+        "total_returns": round(total_returns, 2),
+        "initial_investment": round(initial_investment, 2),
+        "discount_rate": discount_rate,
+        "bep_units": bep_units, "bep_dollars": bep_dollars,
+        "contribution_margin": contribution_margin,
+        "fixed_costs": fixed_costs,
+        "variable_cost_per_unit": variable_cost,
+        "selling_price_per_unit": selling_price,
+        "npv_sensitivity": npv_sensitivity,
+        "pv_benefits": round(pv_benefits, 2),
+        "pv_costs": round(pv_costs, 2),
+    })
+
+
 @app.route("/api/emv", methods=["POST"])
 def calculate_emv():
     """Calculate Expected Monetary Value for project risks."""

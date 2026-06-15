@@ -8,7 +8,7 @@ import math
 
 # ─────────────────── PAGE CONFIG ───────────────────
 st.set_page_config(
-    page_title="PM Calculator — EVM, EMV & Critical Path",
+    page_title="PM Calculator — EVM, EMV, Financial & Critical Path",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -119,6 +119,123 @@ def calc_emv(risks):
     )
 
 
+# ─────────────────── FINANCIAL CALCULATIONS ───────────────────
+def calc_financials(initial_investment, discount_rate, cash_flows, fixed_costs=0, variable_cost_per_unit=0, selling_price_per_unit=0):
+    n = len(cash_flows)
+    r = discount_rate / 100
+
+    # Discounted cash flows
+    dcf = [cf / (1 + r) ** (t + 1) if r != 0 else cf for t, cf in enumerate(cash_flows)]
+
+    # NPV
+    npv = -initial_investment + sum(dcf)
+
+    # Cumulative cash flows (undiscounted)
+    cum_cf = []
+    running = -initial_investment
+    for cf in cash_flows:
+        running += cf
+        cum_cf.append(running)
+
+    # Cumulative discounted cash flows
+    cum_dcf = []
+    running_d = -initial_investment
+    for d in dcf:
+        running_d += d
+        cum_dcf.append(running_d)
+
+    # Payback Period (simple)
+    payback = None
+    for t in range(n):
+        if cum_cf[t] >= 0:
+            if t == 0:
+                payback = initial_investment / cash_flows[0] if cash_flows[0] > 0 else 0
+            else:
+                prev = cum_cf[t - 1]
+                payback = t + abs(prev) / cash_flows[t] if cash_flows[t] > 0 else t + 1
+            break
+
+    # Discounted Payback Period
+    disc_payback = None
+    for t in range(n):
+        if cum_dcf[t] >= 0:
+            if t == 0:
+                disc_payback = initial_investment / dcf[0] if dcf[0] > 0 else 0
+            else:
+                prev = cum_dcf[t - 1]
+                disc_payback = t + abs(prev) / dcf[t] if dcf[t] > 0 else t + 1
+            break
+
+    # IRR (bisection method)
+    def npv_at(rate):
+        return -initial_investment + sum(cf / (1 + rate) ** (t + 1) for t, cf in enumerate(cash_flows))
+
+    irr = None
+    lo, hi = -0.5, 5.0
+    try:
+        if npv_at(lo) * npv_at(hi) < 0:
+            for _ in range(200):
+                mid = (lo + hi) / 2
+                if abs(npv_at(mid)) < 0.01:
+                    irr = mid
+                    break
+                if npv_at(lo) * npv_at(mid) < 0:
+                    hi = mid
+                else:
+                    lo = mid
+            if irr is None:
+                irr = (lo + hi) / 2
+    except (ZeroDivisionError, OverflowError):
+        irr = None
+
+    # ROI
+    total_returns = sum(cash_flows)
+    roi = ((total_returns - initial_investment) / initial_investment) * 100 if initial_investment > 0 else None
+
+    # BCR (Benefit-Cost Ratio)
+    pv_benefits = sum(d for d in dcf if d > 0)
+    pv_costs = initial_investment + abs(sum(d for d in dcf if d < 0))
+    bcr = pv_benefits / pv_costs if pv_costs > 0 else None
+
+    # Profitability Index
+    pv_future = sum(dcf)
+    pi = pv_future / initial_investment if initial_investment > 0 else None
+
+    # Break-Even Analysis
+    bep_units = None
+    bep_dollars = None
+    contribution_margin = None
+    if selling_price_per_unit > 0 and selling_price_per_unit > variable_cost_per_unit:
+        contribution_margin = selling_price_per_unit - variable_cost_per_unit
+        bep_units = fixed_costs / contribution_margin if contribution_margin > 0 else None
+        cm_ratio = contribution_margin / selling_price_per_unit
+        bep_dollars = fixed_costs / cm_ratio if cm_ratio > 0 else None
+
+    # NPV sensitivity data
+    npv_sensitivity = []
+    for test_rate in range(0, 51, 2):
+        tr = test_rate / 100
+        test_npv = -initial_investment + sum(cf / (1 + tr) ** (t + 1) for t, cf in enumerate(cash_flows))
+        npv_sensitivity.append(dict(rate=test_rate, npv=test_npv))
+
+    return dict(
+        npv=npv, irr=irr, roi=roi, bcr=bcr, pi=pi,
+        payback=payback, disc_payback=disc_payback,
+        cash_flows=cash_flows, dcf=dcf,
+        cum_cf=cum_cf, cum_dcf=cum_dcf,
+        total_returns=total_returns,
+        initial_investment=initial_investment,
+        discount_rate=discount_rate,
+        bep_units=bep_units, bep_dollars=bep_dollars,
+        contribution_margin=contribution_margin,
+        fixed_costs=fixed_costs,
+        variable_cost_per_unit=variable_cost_per_unit,
+        selling_price_per_unit=selling_price_per_unit,
+        npv_sensitivity=npv_sensitivity,
+        pv_benefits=pv_benefits, pv_costs=pv_costs,
+    )
+
+
 # ─────────────────── CRITICAL PATH ───────────────────
 def calc_critical_path(tasks):
     task_map = {t["id"]: t for t in tasks}
@@ -178,11 +295,11 @@ def calc_critical_path(tasks):
 
 # ─────────────────── HEADER ───────────────────
 st.markdown("<h1 style='text-align:center;'>📊 Project Management Calculator</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align:center;color:#94a3b8;margin-top:-10px;'>Earned Value Management &bull; EMV Risk Analysis &bull; S-Curve Tracker &bull; Critical Path Analysis</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center;color:#94a3b8;margin-top:-10px;'>Earned Value Management &bull; EMV Risk Analysis &bull; Financial Analysis &bull; S-Curve Tracker &bull; Critical Path</p>", unsafe_allow_html=True)
 st.markdown("---")
 
 # ─────────────────── TABS ───────────────────
-tab_evm, tab_emv, tab_scurve, tab_cp, tab_ref = st.tabs(["📈 EVM Metrics", "🎯 EMV Calculator", "📉 S-Curve Tracker", "🔀 Critical Path", "📖 Formulas"])
+tab_evm, tab_emv, tab_fin, tab_scurve, tab_cp, tab_ref = st.tabs(["📈 EVM Metrics", "🎯 EMV Calculator", "💰 Financial", "📉 S-Curve Tracker", "🔀 Critical Path", "📖 Formulas"])
 
 # ═══════════════════════════════════════════════════════
 #                     EVM TAB
@@ -687,6 +804,305 @@ with tab_emv:
 
 
 # ═══════════════════════════════════════════════════════
+#                  FINANCIAL TAB
+# ═══════════════════════════════════════════════════════
+with tab_fin:
+    st.subheader("Financial Analysis Calculator")
+    st.caption("Calculate Payback Period, NPV, IRR, BCR, ROI, Profitability Index, and Break-Even Analysis from project cash flows.")
+
+    fin_c1, fin_c2, fin_c3 = st.columns(3)
+    fin_invest = fin_c1.number_input("Initial Investment ($)", min_value=0.0, value=500000.0, step=10000.0, format="%.0f", key="fin_invest")
+    fin_rate = fin_c2.number_input("Discount Rate (%)", min_value=0.0, max_value=100.0, value=10.0, step=0.5, key="fin_rate")
+    fin_periods = fin_c3.number_input("Number of Periods", min_value=1, max_value=30, value=7, step=1, key="fin_periods")
+
+    st.markdown("#### Break-Even Parameters *(optional)*")
+    be_c1, be_c2, be_c3 = st.columns(3)
+    be_fixed = be_c1.number_input("Fixed Costs ($)", min_value=0.0, value=200000.0, step=1000.0, format="%.0f", key="be_fixed")
+    be_var = be_c2.number_input("Variable Cost / Unit ($)", min_value=0.0, value=50.0, step=1.0, format="%.2f", key="be_var")
+    be_price = be_c3.number_input("Selling Price / Unit ($)", min_value=0.0, value=120.0, step=1.0, format="%.2f", key="be_price")
+
+    st.markdown("#### Cash Flows per Period")
+
+    sample_cfs = [80000, 120000, 140000, 140000, 120000, 100000, 80000]
+    use_sample_fin = st.checkbox("Load sample cash flows", value=True, key="fin_sample")
+
+    if use_sample_fin:
+        default_fin = {f"Period {i+1}": {"Cash Flow ($)": sample_cfs[i] if i < len(sample_cfs) else 0} for i in range(int(fin_periods))}
+    else:
+        default_fin = {f"Period {i+1}": {"Cash Flow ($)": 0} for i in range(int(fin_periods))}
+
+    fin_df = pd.DataFrame(default_fin).T
+    fin_df.index.name = "Period"
+    edited_fin = st.data_editor(fin_df, use_container_width=True, num_rows="fixed", key="fin_cf_editor")
+
+    if st.button("Calculate Financials", type="primary", use_container_width=True, key="calc_fin"):
+        cfs = edited_fin["Cash Flow ($)"].values.astype(float).tolist()
+        if sum(abs(c) for c in cfs) == 0:
+            st.error("Enter at least one non-zero cash flow.")
+        else:
+            st.session_state["fin_result"] = calc_financials(
+                fin_invest, fin_rate, cfs, be_fixed, be_var, be_price
+            )
+
+    if "fin_result" in st.session_state:
+        d = st.session_state["fin_result"]
+
+        st.markdown("---")
+
+        # ── Key Metrics ──
+        st.markdown("### Key Financial Metrics")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("NPV", f'${d["npv"]:,.0f}',
+                  delta="Profitable" if d["npv"] >= 0 else "Unprofitable",
+                  delta_color="normal" if d["npv"] >= 0 else "inverse")
+        irr_str = f'{d["irr"]*100:.2f}%' if d["irr"] is not None else "N/A"
+        m2.metric("IRR", irr_str,
+                  delta="Above hurdle" if d["irr"] and d["irr"] * 100 > d["discount_rate"] else "Below hurdle",
+                  delta_color="normal" if d["irr"] and d["irr"] * 100 > d["discount_rate"] else "inverse")
+        m3.metric("ROI", f'{d["roi"]:.1f}%' if d["roi"] is not None else "N/A",
+                  delta="Positive" if d["roi"] and d["roi"] > 0 else "Negative",
+                  delta_color="normal" if d["roi"] and d["roi"] > 0 else "inverse")
+        pb_str = f'{d["payback"]:.1f} periods' if d["payback"] is not None else "Never"
+        m4.metric("Payback Period", pb_str)
+
+        m5, m6, m7, m8 = st.columns(4)
+        m5.metric("BCR", f'{d["bcr"]:.3f}' if d["bcr"] is not None else "N/A",
+                  delta="Benefits > Costs" if d["bcr"] and d["bcr"] >= 1 else "Costs > Benefits",
+                  delta_color="normal" if d["bcr"] and d["bcr"] >= 1 else "inverse")
+        m6.metric("Profitability Index", f'{d["pi"]:.3f}' if d["pi"] is not None else "N/A",
+                  delta="Accept" if d["pi"] and d["pi"] >= 1 else "Reject",
+                  delta_color="normal" if d["pi"] and d["pi"] >= 1 else "inverse")
+        dpb_str = f'{d["disc_payback"]:.1f} periods' if d["disc_payback"] is not None else "Never"
+        m7.metric("Discounted Payback", dpb_str)
+        m8.metric("Total Returns", f'${d["total_returns"]:,.0f}')
+
+        # Break-Even metrics
+        if d["bep_units"] is not None:
+            st.markdown("### Break-Even Analysis")
+            be1, be2, be3, be4 = st.columns(4)
+            be1.metric("Break-Even (Units)", f'{d["bep_units"]:,.0f}')
+            be2.metric("Break-Even (Revenue)", f'${d["bep_dollars"]:,.0f}')
+            be3.metric("Contribution Margin / Unit", f'${d["contribution_margin"]:,.2f}')
+            cm_ratio = d["contribution_margin"] / d["selling_price_per_unit"] * 100
+            be4.metric("CM Ratio", f'{cm_ratio:.1f}%')
+
+        # ── CHARTS ──
+        st.markdown("---")
+        st.markdown("### 📊 Visual Analysis")
+
+        # Row 1: Cumulative Cash Flow + NPV Sensitivity
+        c1, c2 = st.columns(2)
+        with c1:
+            periods = list(range(len(d["cash_flows"])))
+            p_labels = [f'P{i+1}' for i in periods]
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=["P0"] + p_labels, y=[-d["initial_investment"]] + d["cum_cf"],
+                mode="lines+markers", name="Undiscounted",
+                line=dict(color=COLORS["accent"], width=3), marker=dict(size=8),
+            ))
+            fig.add_trace(go.Scatter(
+                x=["P0"] + p_labels, y=[-d["initial_investment"]] + d["cum_dcf"],
+                mode="lines+markers", name="Discounted",
+                line=dict(color=COLORS["purple"], width=3, dash="dash"), marker=dict(size=8),
+            ))
+            fig.add_hline(y=0, line_dash="dash", line_color=COLORS["green"], line_width=1,
+                          annotation_text="Break-even", annotation_font_color="#94a3b8")
+            if d["payback"] is not None:
+                fig.add_vline(x=d["payback"], line_dash="dot", line_color=COLORS["yellow"], line_width=1,
+                              annotation_text=f'Payback: {d["payback"]:.1f}', annotation_font_color=COLORS["yellow"])
+            fig.update_layout(**pl(title="Cumulative Cash Flow (Payback Visualization)",
+                                   yaxis=dict(title="Cumulative ($)"), xaxis=dict(title="Period")))
+            st.plotly_chart(fig, use_container_width=True)
+
+        with c2:
+            sens = d["npv_sensitivity"]
+            rates = [s["rate"] for s in sens]
+            npvs = [s["npv"] for s in sens]
+            colors_sens = [COLORS["green"] if v >= 0 else COLORS["red"] for v in npvs]
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=rates, y=npvs, mode="lines+markers",
+                line=dict(color=COLORS["accent"], width=2), marker=dict(size=5, color=colors_sens),
+                fill="tozeroy", fillcolor="rgba(59,130,246,0.1)",
+            ))
+            fig.add_hline(y=0, line_dash="dash", line_color="#f1f5f9", line_width=1)
+            if d["irr"] is not None:
+                fig.add_vline(x=d["irr"] * 100, line_dash="dot", line_color=COLORS["yellow"], line_width=2,
+                              annotation_text=f'IRR: {d["irr"]*100:.1f}%', annotation_font_color=COLORS["yellow"])
+            fig.add_vline(x=d["discount_rate"], line_dash="dot", line_color=COLORS["red"], line_width=1,
+                          annotation_text=f'Discount: {d["discount_rate"]}%', annotation_font_color=COLORS["red"])
+            fig.update_layout(**pl(title="NPV Sensitivity (shows IRR where NPV = 0)",
+                                   xaxis=dict(title="Discount Rate (%)"), yaxis=dict(title="NPV ($)")))
+            st.plotly_chart(fig, use_container_width=True)
+
+        # Row 2: Period Cash Flows + Discounted vs Undiscounted
+        c1, c2 = st.columns(2)
+        with c1:
+            fig = go.Figure()
+            cf_colors = [COLORS["green"] if v >= 0 else COLORS["red"] for v in d["cash_flows"]]
+            fig.add_trace(go.Bar(
+                x=p_labels, y=d["cash_flows"], marker_color=cf_colors,
+                text=[f'${v:,.0f}' for v in d["cash_flows"]], textposition="outside",
+                textfont=dict(color="#f1f5f9", size=10),
+            ))
+            fig.add_hline(y=0, line_dash="dash", line_color="#f1f5f9", line_width=1)
+            fig.update_layout(**pl(title="Cash Flow per Period", yaxis=dict(title="Cash Flow ($)"),
+                                   xaxis=dict(title="Period")))
+            st.plotly_chart(fig, use_container_width=True)
+
+        with c2:
+            fig = go.Figure()
+            fig.add_trace(go.Bar(x=p_labels, y=d["cash_flows"], name="Undiscounted",
+                                 marker_color=COLORS["accent"], opacity=0.7))
+            fig.add_trace(go.Bar(x=p_labels, y=d["dcf"], name="Discounted (PV)",
+                                 marker_color=COLORS["purple"], opacity=0.7))
+            fig.update_layout(**pl(title="Undiscounted vs Discounted Cash Flows", barmode="group",
+                                   yaxis=dict(title="Amount ($)"), xaxis=dict(title="Period")))
+            st.plotly_chart(fig, use_container_width=True)
+
+        # Row 3: Financial Metrics Radar + Key Ratios Bar
+        c1, c2 = st.columns(2)
+        with c1:
+            radar_cats = ["NPV Health", "IRR vs Hurdle", "ROI", "BCR", "PI", "Payback Speed"]
+            npv_score = min(2, max(0, 1 + d["npv"] / d["initial_investment"])) if d["initial_investment"] > 0 else 0
+            irr_score = min(2, (d["irr"] * 100 / d["discount_rate"])) if d["irr"] and d["discount_rate"] > 0 else 0
+            roi_score = min(2, max(0, d["roi"] / 100 + 1)) if d["roi"] is not None else 0
+            bcr_score = min(2, d["bcr"]) if d["bcr"] else 0
+            pi_score = min(2, d["pi"]) if d["pi"] else 0
+            n_periods = len(d["cash_flows"])
+            pb_score = min(2, (n_periods - (d["payback"] or n_periods)) / n_periods * 2) if d["payback"] else 0
+            fig = go.Figure()
+            fig.add_trace(go.Scatterpolar(
+                r=[npv_score, irr_score, roi_score, bcr_score, pi_score, pb_score],
+                theta=radar_cats, fill="toself", name="Project",
+                line_color=COLORS["accent"], opacity=0.6,
+            ))
+            fig.add_trace(go.Scatterpolar(
+                r=[1, 1, 1, 1, 1, 1], theta=radar_cats, fill="none", name="Baseline (1.0)",
+                line=dict(color=COLORS["green"], dash="dash", width=1),
+            ))
+            fig.update_layout(**pl(title="Financial Health Radar", polar=dict(
+                bgcolor="#0f172a", radialaxis=dict(range=[0, 2], gridcolor="#1e293b", visible=True, showticklabels=False),
+                angularaxis=dict(gridcolor="#334155", linecolor="#334155"))))
+            st.plotly_chart(fig, use_container_width=True)
+
+        with c2:
+            ratio_labels = ["BCR", "Profitability\nIndex", "ROI / 100"]
+            ratio_vals = [d["bcr"] or 0, d["pi"] or 0, (d["roi"] or 0) / 100]
+            ratio_colors = [
+                COLORS["green"] if (d["bcr"] or 0) >= 1 else COLORS["red"],
+                COLORS["green"] if (d["pi"] or 0) >= 1 else COLORS["red"],
+                COLORS["green"] if (d["roi"] or 0) > 0 else COLORS["red"],
+            ]
+            fig = go.Figure(go.Bar(
+                x=ratio_labels, y=ratio_vals, marker_color=ratio_colors,
+                text=[f'{v:.3f}' for v in ratio_vals], textposition="outside",
+                textfont=dict(color="#f1f5f9", size=12),
+            ))
+            fig.add_hline(y=1, line_dash="dash", line_color=COLORS["yellow"], line_width=1,
+                          annotation_text="Threshold: 1.0", annotation_font_color="#94a3b8")
+            fig.update_layout(**pl(title="Key Financial Ratios", yaxis=dict(title="Ratio")))
+            st.plotly_chart(fig, use_container_width=True)
+
+        # Row 4: Investment Breakdown + ROI Waterfall
+        c1, c2 = st.columns(2)
+        with c1:
+            net_gain = d["total_returns"] - d["initial_investment"]
+            fig = go.Figure()
+            fig.add_trace(go.Bar(y=["Investment"], x=[d["initial_investment"]], name="Initial Investment",
+                                 orientation="h", marker_color=COLORS["red"]))
+            pv_total = sum(d["dcf"])
+            fig.add_trace(go.Bar(y=["PV Returns"], x=[pv_total], name="PV of Returns",
+                                 orientation="h", marker_color=COLORS["green"] if pv_total >= d["initial_investment"] else COLORS["yellow"]))
+            fig.update_layout(**pl(title="Investment vs PV of Returns", xaxis=dict(title="Amount ($)"),
+                                   barmode="group"))
+            st.plotly_chart(fig, use_container_width=True)
+
+        with c2:
+            wf_labels = ["Investment", "Total Returns", "Net Profit", "NPV"]
+            wf_vals = [-d["initial_investment"], d["total_returns"], d["total_returns"] - d["initial_investment"], d["npv"]]
+            wf_colors = [COLORS["red"], COLORS["green"],
+                         COLORS["green"] if wf_vals[2] >= 0 else COLORS["red"],
+                         COLORS["green"] if d["npv"] >= 0 else COLORS["red"]]
+            fig = go.Figure(go.Bar(
+                x=wf_labels, y=wf_vals, marker_color=wf_colors,
+                text=[f'${v:,.0f}' for v in wf_vals], textposition="outside",
+                textfont=dict(color="#f1f5f9", size=10),
+            ))
+            fig.add_hline(y=0, line_dash="dash", line_color="#f1f5f9", line_width=1)
+            fig.update_layout(**pl(title="Investment Waterfall", yaxis=dict(title="Amount ($)")))
+            st.plotly_chart(fig, use_container_width=True)
+
+        # Row 5: Break-Even Chart (if applicable)
+        if d["bep_units"] is not None:
+            st.markdown("### Break-Even Chart")
+            max_units = int(d["bep_units"] * 2.5)
+            units_range = list(range(0, max_units + 1, max(1, max_units // 50)))
+            total_costs = [d["fixed_costs"] + d["variable_cost_per_unit"] * u for u in units_range]
+            total_revenue = [d["selling_price_per_unit"] * u for u in units_range]
+            fixed_line = [d["fixed_costs"]] * len(units_range)
+            variable_costs = [d["variable_cost_per_unit"] * u for u in units_range]
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=units_range, y=total_revenue, name="Total Revenue",
+                                     line=dict(color=COLORS["green"], width=3), mode="lines"))
+            fig.add_trace(go.Scatter(x=units_range, y=total_costs, name="Total Costs",
+                                     line=dict(color=COLORS["red"], width=3), mode="lines"))
+            fig.add_trace(go.Scatter(x=units_range, y=fixed_line, name="Fixed Costs",
+                                     line=dict(color=COLORS["yellow"], width=2, dash="dash"), mode="lines"))
+            fig.add_trace(go.Scatter(x=units_range, y=variable_costs, name="Variable Costs",
+                                     line=dict(color=COLORS["orange"], width=2, dash="dot"), mode="lines"))
+            fig.add_vline(x=d["bep_units"], line_dash="dot", line_color=COLORS["accent"], line_width=2,
+                          annotation_text=f'BEP: {d["bep_units"]:,.0f} units', annotation_font_color=COLORS["accent"])
+            fig.add_trace(go.Scatter(x=[d["bep_units"]], y=[d["bep_dollars"]],
+                                     mode="markers", marker=dict(size=14, color=COLORS["accent"], symbol="star"),
+                                     name=f'Break-Even Point', showlegend=True))
+            fig.update_layout(**pl(title="Break-Even Analysis",
+                                   xaxis=dict(title="Units Sold"), yaxis=dict(title="Amount ($)"),
+                                   height=450, legend=dict(orientation="h", y=-0.15, x=0.5, xanchor="center")))
+            st.plotly_chart(fig, use_container_width=True)
+
+        # Summary Table
+        st.markdown("### Period Detail Table")
+        detail_data = {
+            "Period": [f"P{i+1}" for i in range(len(d["cash_flows"]))],
+            "Cash Flow": [f'${v:,.0f}' for v in d["cash_flows"]],
+            "Discounted CF": [f'${v:,.0f}' for v in d["dcf"]],
+            "Cumulative CF": [f'${v:,.0f}' for v in d["cum_cf"]],
+            "Cumulative DCF": [f'${v:,.0f}' for v in d["cum_dcf"]],
+        }
+        st.dataframe(pd.DataFrame(detail_data).set_index("Period"), use_container_width=True)
+
+        # Interpretation
+        st.markdown("### 💡 Interpretation")
+        interps = []
+        if d["npv"] >= 0:
+            interps.append(f'✅ **NPV = ${d["npv"]:,.0f}** — Project adds value. Accept the investment.')
+        else:
+            interps.append(f'❌ **NPV = ${d["npv"]:,.0f}** — Project destroys value at {d["discount_rate"]}% discount rate. Consider rejecting.')
+        if d["irr"] is not None:
+            if d["irr"] * 100 > d["discount_rate"]:
+                interps.append(f'✅ **IRR = {d["irr"]*100:.2f}%** — Exceeds the hurdle rate of {d["discount_rate"]}%. Investment is attractive.')
+            else:
+                interps.append(f'❌ **IRR = {d["irr"]*100:.2f}%** — Below the hurdle rate of {d["discount_rate"]}%.')
+        if d["roi"] is not None:
+            interps.append(f'{"✅" if d["roi"]>0 else "❌"} **ROI = {d["roi"]:.1f}%** — For every $1 invested, ${1+d["roi"]/100:.2f} is returned.')
+        if d["bcr"] is not None:
+            interps.append(f'{"✅" if d["bcr"]>=1 else "❌"} **BCR = {d["bcr"]:.3f}** — {"Benefits exceed costs." if d["bcr"]>=1 else "Costs exceed benefits."}')
+        if d["pi"] is not None:
+            interps.append(f'{"✅" if d["pi"]>=1 else "❌"} **PI = {d["pi"]:.3f}** — {"Project creates ${:.2f} of value per $1 invested.".format(d["pi"]) if d["pi"]>=1 else "Project returns less than invested."}')
+        if d["payback"] is not None:
+            interps.append(f'⏱️ **Payback Period = {d["payback"]:.1f} periods** — Investment recovered in {d["payback"]:.1f} periods out of {len(d["cash_flows"])}.')
+        else:
+            interps.append(f'⚠️ **Payback Period = Never** — Investment is not recovered within the project timeline.')
+        if d["bep_units"] is not None:
+            interps.append(f'📊 **Break-Even = {d["bep_units"]:,.0f} units (${d["bep_dollars"]:,.0f} revenue)** — Must sell at least this many units at ${d["selling_price_per_unit"]:,.2f} each to cover costs.')
+        for line in interps:
+            st.markdown(line)
+
+
+# ═══════════════════════════════════════════════════════
 #                   S-CURVE TAB
 # ═══════════════════════════════════════════════════════
 with tab_scurve:
@@ -1101,6 +1517,25 @@ with tab_ref:
             st.code(formula, language=None)
 
     st.markdown("---")
+    st.subheader("Financial Calculations")
+    formulas_fin = [
+        ("Net Present Value (NPV)", "NPV = -I₀ + Σ CFₜ / (1+r)ᵗ"),
+        ("Internal Rate of Return (IRR)", "Rate r where NPV = 0"),
+        ("Payback Period", "Period where Cumulative CF ≥ 0"),
+        ("Discounted Payback", "Period where Cum. DCF ≥ 0"),
+        ("ROI", "ROI = (Returns - Cost) / Cost × 100"),
+        ("Benefit-Cost Ratio (BCR)", "BCR = PV(Benefits) / PV(Costs)"),
+        ("Profitability Index (PI)", "PI = PV(Cash Flows) / Initial Investment"),
+        ("Break-Even (Units)", "BEP = Fixed Costs / (Price - Var Cost)"),
+        ("Break-Even (Revenue)", "BEP$ = Fixed Costs / CM Ratio"),
+    ]
+    cols = st.columns(3)
+    for i, (name, formula) in enumerate(formulas_fin):
+        with cols[i % 3]:
+            st.markdown(f"**{name}**")
+            st.code(formula, language=None)
+
+    st.markdown("---")
     st.subheader("Critical Path Method (CPM)")
     formulas_cpm = [
         ("Early Start (ES)", "ES = max(EF of predecessors)"),
@@ -1126,6 +1561,12 @@ with tab_ref:
     - **TCPI > 1.0** — Must improve efficiency to meet target
     - **TCPI < 1.0** — Can relax efficiency and still meet target
     - **Total Float = 0** — Task is on critical path; any delay extends the project
+    - **NPV > 0** — Project adds value; accept
+    - **NPV < 0** — Project destroys value; reject
+    - **IRR > Discount Rate** — Investment is attractive
+    - **BCR > 1.0** — Benefits exceed costs
+    - **PI > 1.0** — Good investment (creates value per dollar)
+    - **ROI > 0%** — Positive return on investment
     - **EMV < 0** — Threat (negative risk); expected loss
     - **EMV > 0** — Opportunity (positive risk); expected gain
     - **Total EMV < 0** — Net negative risk exposure; increase contingency reserve
