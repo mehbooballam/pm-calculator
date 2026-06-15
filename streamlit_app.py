@@ -1728,3 +1728,13 @@ with tab_ref:
     - **Total EMV < 0** — Net negative risk exposure; increase contingency reserve
     - **Contingency Reserve** — Should cover the sum of threat EMVs
     """)
+
+# ─────────────────── COPYRIGHT FOOTER ───────────────────
+st.markdown("---")
+st.markdown("""
+<div style="text-align:center; padding: 20px 0 10px; color: #64748b; font-size: 0.85rem;">
+    <p style="margin-bottom: 4px;">Prepared by <strong style="color:#f1f5f9;">Mehboob Alam</strong></p>
+    <p><a href="https://www.mehboobalam.com" target="_blank" style="color:#3b82f6; text-decoration:none; font-weight:600;">www.mehboobalam.com</a></p>
+    <p style="margin-top: 8px; font-size: 0.75rem; color: #475569;">&copy; Mehboob Alam. All rights reserved.</p>
+</div>
+""", unsafe_allow_html=True)
